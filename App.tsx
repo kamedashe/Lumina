@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-    Send, Cpu, FileText, Terminal, Sparkles, Loader2, Bot, 
+    Send, Cpu, FileText, Terminal, Loader2, Bot, 
     Settings, Globe, History, Download, ChevronRight, MessageSquare, Plus, Trash2, User 
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -20,6 +20,42 @@ const invoke = async <T,>(cmd: string, args?: any): Promise<T> => {
   if (cmd === 'get_system_processes') return ['Chrome (500MB)', 'Code (200MB)'] as any;
   return null as any;
 };
+
+// --- Custom Logo Component ---
+const LuminaLogo: React.FC<{ className?: string, withText?: boolean }> = ({ className = "w-8 h-8", withText = false }) => (
+  <div className={`flex items-center gap-2 ${withText ? '' : 'justify-center'}`}>
+    <svg className={className} viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="lumina_grad" x1="0" y1="100" x2="100" y2="0" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#7C3AED" /> {/* Violet-600 */}
+          <stop offset="1" stopColor="#3B82F6" /> {/* Blue-500 */}
+        </linearGradient>
+        <filter id="glow" x="-20" y="-20" width="140" height="140" filterUnits="userSpaceOnUse">
+          <feGaussianBlur stdDeviation="5" result="blur" />
+          <feComposite in="SourceGraphic" in2="blur" operator="over" />
+        </filter>
+      </defs>
+      {/* Background shape (optional usage depending on context, keeping transparent for now or adding subtle backdrop) */}
+      
+      {/* The Spark/Star */}
+      <path 
+        d="M50 5 L58 35 L95 50 L58 65 L50 95 L42 65 L5 50 L42 35 Z" 
+        fill="url(#lumina_grad)" 
+        stroke="rgba(255,255,255,0.5)" 
+        strokeWidth="2"
+        filter="url(#glow)"
+      />
+      
+      {/* Center Brightness */}
+      <circle cx="50" cy="50" r="10" fill="white" fillOpacity="0.8" filter="url(#glow)" />
+    </svg>
+    {withText && (
+      <span className="text-lg font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-200 to-blue-200 tracking-wide">
+        Lumina
+      </span>
+    )}
+  </div>
+);
 
 const App: React.FC = () => {
   // Chat State
@@ -239,10 +275,9 @@ const App: React.FC = () => {
                     <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className={`p-2 rounded-lg hover:bg-white/10 transition-colors ${isSidebarOpen ? 'text-purple-400' : 'text-gray-400'}`}>
                         {isSidebarOpen ? <ChevronRight className="w-5 h-5" /> : <History className="w-5 h-5" />}
                     </button>
-                    <div className="flex items-center space-x-2 text-sm font-medium text-purple-200">
-                        <Sparkles className="w-4 h-4 text-purple-400" />
-                        <span>Lumina</span>
-                    </div>
+                    
+                    {/* Replaced Icon/Text with Logo Component */}
+                    <LuminaLogo className="w-8 h-8" withText={true} />
                 </div>
 
                 <div className="flex items-center gap-3">
@@ -285,7 +320,9 @@ const App: React.FC = () => {
                     <div className="h-full flex flex-col items-center justify-center opacity-60 space-y-6">
                         <div className="relative">
                             <div className="w-32 h-32 rounded-full bg-purple-500/20 blur-3xl absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 animate-pulse-slow"></div>
-                            <Bot className="w-16 h-16 text-white/10 relative z-10" />
+                            
+                            {/* Replaced Icon with Logo Component (Larger) */}
+                            <LuminaLogo className="w-20 h-20 relative z-10" />
                         </div>
                         <div className="text-center space-y-2">
                             <h2 className="text-2xl font-light text-white/90">Lumina AI</h2>
@@ -306,7 +343,7 @@ const App: React.FC = () => {
                                 className={`flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}
                             >
                                 <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${msg.role === 'user' ? 'bg-purple-500/20' : 'bg-blue-500/20'}`}>
-                                    {msg.role === 'user' ? <User className="w-4 h-4 text-purple-400" /> : <Bot className="w-4 h-4 text-blue-400" />}
+                                    {msg.role === 'user' ? <User className="w-4 h-4 text-purple-400" /> : <LuminaLogo className="w-5 h-5" />}
                                 </div>
                                 <div className={`max-w-[80%] rounded-2xl px-5 py-3.5 text-sm leading-relaxed ${msg.role === 'user' ? 'bg-purple-600 text-white' : 'bg-white/5 border border-white/5 text-gray-200'}`}>
                                     {msg.role === 'assistant' ? (
@@ -323,7 +360,7 @@ const App: React.FC = () => {
                         ))}
                         {isLoading && (
                             <div className="flex gap-4">
-                                <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center"><Bot className="w-4 h-4 text-blue-400" /></div>
+                                <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center"><LuminaLogo className="w-4 h-4" /></div>
                                 <div className="flex items-center space-x-2 text-gray-500 text-xs h-8">
                                     <Loader2 className="w-3 h-3 animate-spin" />
                                     <span>Thinking...</span>
