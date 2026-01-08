@@ -1,7 +1,12 @@
 {
+  "$schema": "https://schema.tauri.app/config/2",
   "productName": "Lumina",
   "version": "0.1.0",
   "identifier": "com.lumina.ai",
+  "package": {
+    "productName": "Lumina",
+    "version": "0.1.0"
+  },
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
