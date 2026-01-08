@@ -20,7 +20,7 @@
         "transparent": true,
         "alwaysOnTop": true,
         "center": true,
-        "visible": false
+        "visible": true
       }
     ],
     "security": {
@@ -37,7 +37,6 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "identifier": "com.lumina.ai",
     "category": "Utility"
   }
 }

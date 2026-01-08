@@ -6,7 +6,7 @@ import {
 import ReactMarkdown from 'react-markdown';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Message, ChatSession } from './types';
-import { SYSTEM_PROMPT } from './src/constants';
+import { SYSTEM_PROMPT } from './constants';
 
 // --- Mock Tauri Invoke ---
 const invoke = async <T,>(cmd: string, args?: any): Promise<T> => {
@@ -18,7 +18,6 @@ const invoke = async <T,>(cmd: string, args?: any): Promise<T> => {
 };
 
 // --- Enhanced Vector Logo (SVG) ---
-// Kept the new design as requested
 const LuminaLogo: React.FC<{ className?: string, withText?: boolean }> = ({ className = "w-8 h-8", withText = false }) => (
   <div className={`flex items-center gap-2 ${withText ? '' : 'justify-center'}`}>
     <svg className={className} viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -58,7 +57,6 @@ const App: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   
-  // Feature toggle state (kept local only)
   const [isWebSearchEnabled, setIsWebSearchEnabled] = useState(false); 
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -80,7 +78,7 @@ const App: React.FC = () => {
   const saveHistory = () => {
     setHistory(prev => {
         const existingIndex = prev.findIndex(s => s.id === currentSessionId);
-        const title = messages[0].content.slice(0, 30) + (messages[0].content.length > 30 ? '...' : '');
+        const title = messages[0]?.content.slice(0, 30) + (messages[0]?.content.length > 30 ? '...' : '') || 'New Chat';
         const updatedSession = { id: currentSessionId, title, date: Date.now(), messages };
         
         let newHistory;
@@ -98,8 +96,13 @@ const App: React.FC = () => {
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
 
   const fetchModels = async () => {
-    const models = await invoke<string[]>('get_ollama_models');
-    if (models) setAvailableModels(models);
+    try {
+      const models = await invoke<string[]>('get_ollama_models');
+      if (models) setAvailableModels(models);
+    } catch (e) {
+      console.warn("Could not fetch models", e);
+      setAvailableModels(['llama3', 'mistral']);
+    }
   };
 
   const handleSendMessage = async () => {
@@ -110,14 +113,9 @@ const App: React.FC = () => {
     setIsLoading(true);
 
     try {
-        let context = SYSTEM_PROMPT;
-        
-        // Note: Real web search would require a separate local tool or API, 
-        // for now we stick to pure LLM generation to keep it local/free as requested.
-        
         const response = await invoke<string>('chat_with_ollama', {
           model: selectedModel,
-          messages: [{role: 'system', content: context}, ...messages, userMsg]
+          messages: [{role: 'system', content: SYSTEM_PROMPT}, ...messages, userMsg]
         });
         
         setMessages(prev => [...prev, { role: 'assistant', content: response }]);
@@ -131,7 +129,6 @@ const App: React.FC = () => {
 
   const handleGetProcesses = async () => {
     setIsLoading(true);
-    // Add a ghost message to UI
     const sysMsg: Message = { role: 'user', content: "Check system processes" };
     setMessages(prev => [...prev, sysMsg]);
     
@@ -154,7 +151,6 @@ const App: React.FC = () => {
     <div className="h-screen w-screen flex items-center justify-center bg-transparent font-sans">
       <div className="w-full h-full md:w-[900px] md:h-[680px] glass-panel rounded-3xl flex shadow-2xl overflow-hidden text-white relative border border-white/10">
         
-        {/* Sidebar */}
         <AnimatePresence>
           {isSidebarOpen && (
             <motion.div initial={{ width: 0 }} animate={{ width: 280 }} exit={{ width: 0 }} className="h-full bg-black/40 backdrop-blur-xl border-r border-white/5 flex flex-col overflow-hidden">
@@ -167,17 +163,15 @@ const App: React.FC = () => {
                   <Plus className="w-4 h-4" /> New Session
                 </button>
                 {history.map(s => (
-                  <button key={s.id} onClick={() => { setMessages(s.messages); setCurrentSessionId(s.id); }} className="w-full p-3 text-left rounded-lg text-xs text-gray-400 hover:bg-white/5 truncate">{s.title}</button>
+                  <button key={s.id} onClick={() => { setMessages(s.messages); setCurrentSessionId(s.id); }} className={`w-full p-3 text-left rounded-lg text-xs truncate transition-colors ${currentSessionId === s.id ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5'}`}>{s.title}</button>
                 ))}
               </div>
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* Main Content */}
         <div className="flex-1 flex flex-col bg-[#0F0F13]/90 relative">
           
-          {/* Header */}
           <div className="h-16 flex items-center justify-between px-6 border-b border-white/5 backdrop-blur-md">
             <div className="flex items-center gap-4">
               <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 hover:bg-white/5 rounded-lg transition-colors">
@@ -198,7 +192,6 @@ const App: React.FC = () => {
             </div>
           </div>
 
-          {/* Chat Container */}
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
             {messages.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center space-y-8 animate-in fade-in duration-700">
@@ -233,7 +226,6 @@ const App: React.FC = () => {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input */}
           <div className="p-6 bg-gradient-to-t from-[#0F0F13] to-transparent">
             <div className="max-w-3xl mx-auto relative group">
               <div className="absolute -inset-0.5 bg-gradient-to-r from-purple-500 to-blue-500 rounded-2xl opacity-20 blur group-focus-within:opacity-50 transition-all duration-500"></div>
@@ -254,7 +246,6 @@ const App: React.FC = () => {
             </div>
           </div>
 
-          {/* Settings Modal - Cleaned up */}
           <AnimatePresence>
             {showSettings && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-6">
