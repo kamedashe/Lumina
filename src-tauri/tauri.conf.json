@@ -1,82 +1,43 @@
 {
+  "productName": "Lumina",
+  "version": "0.1.0",
+  "identifier": "com.lumina.ai",
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
-    "devPath": "http://localhost:3000",
-    "distDir": "../dist"
+    "devUrl": "http://localhost:3000",
+    "frontendDist": "../dist"
   },
-  "package": {
-    "productName": "Lumina",
-    "version": "0.1.0"
-  },
-  "tauri": {
-    "allowlist": {
-      "all": false,
-      "shell": {
-        "all": false,
-        "open": true
-      },
-      "fs": {
-        "all": false,
-        "readFile": true
-      }
-    },
-    "bundle": {
-      "active": true,
-      "category": "Utility",
-      "copyright": "",
-      "deb": {
-        "depends": []
-      },
-      "externalBin": [],
-      "icon": [
-        "icons/32x32.png",
-        "icons/128x128.png",
-        "icons/128x128@2x.png",
-        "icons/icon.icns",
-        "icons/icon.ico"
-      ],
-      "identifier": "com.lumina.ai",
-      "longDescription": "",
-      "macOS": {
-        "entitlements": null,
-        "exceptionDomain": "",
-        "frameworks": [],
-        "providerShortName": null,
-        "signingIdentity": null
-      },
-      "resources": [],
-      "shortDescription": "",
-      "targets": "all",
-      "windows": {
-        "certificateThumbprint": null,
-        "digestAlgorithm": "sha256",
-        "timestampUrl": ""
-      }
-    },
-    "security": {
-      "csp": null
-    },
-    "updater": {
-      "active": false
-    },
+  "app": {
     "windows": [
       {
-        "fullscreen": false,
-        "resizable": false,
         "title": "Lumina",
         "width": 800,
         "height": 600,
-        "center": true,
+        "resizable": false,
+        "fullscreen": false,
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,
+        "center": true,
         "visible": false
       }
     ],
-    "systemTray": {
-      "iconPath": "icons/icon.png",
-      "iconAsTemplate": true
+    "security": {
+      "csp": null
     }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "identifier": "com.lumina.ai",
+    "category": "Utility"
   }
 }
