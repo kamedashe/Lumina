@@ -18,13 +18,14 @@ const invoke = async <T,>(cmd: string, args?: any): Promise<T> => {
     console.error(`Invoke error for ${cmd}:`, err);
   }
 
-  // Mock responses for web preview or fallback
+  // Fallback for browser/preview mode
+  await new Promise(r => setTimeout(r, 600)); // Simulaton delay
+  
   if (cmd === 'chat_with_ollama') {
-    await new Promise(r => setTimeout(r, 1000));
-    return `**Lumina AI:** I'm currently running in preview mode. To use the real local LLM, please ensure **Ollama** is running on your machine and you are using the Lumina desktop app.\n\nYour message was: "${args.messages.at(-1).content}"` as any;
+    return `**Lumina:** I'm running in *Preview Mode*. \n\nTo use the real local LLM:\n1. Ensure **Ollama** is installed and running.\n2. Run this app via \`npm run tauri dev\`.\n\nYour prompt was: "${args.messages.at(-1).content}"` as any;
   }
-  if (cmd === 'get_ollama_models') return ['llama3', 'mistral', 'phi3'] as any;
-  if (cmd === 'get_system_processes') return ['Lumina (120MB)', 'Ollama (1.2GB)', 'System Idle (98%)'] as any;
+  if (cmd === 'get_ollama_models') return ['llama3', 'mistral', 'gemma:2b', 'phi3'] as any;
+  if (cmd === 'get_system_processes') return ['Code.exe (320MB)', 'Chrome.exe (1.5GB)', 'Ollama_Service (4GB)', 'Lumina (80MB)'] as any;
   
   return null as any;
 };
@@ -89,7 +90,10 @@ const App: React.FC = () => {
     if (messages.length === 0) return;
     setHistory(prev => {
         const existingIndex = prev.findIndex(s => s.id === currentSessionId);
-        const title = messages[0]?.content.slice(0, 30) + (messages[0]?.content.length > 30 ? '...' : '') || 'New Chat';
+        // Better title generation
+        const firstMsg = messages.find(m => m.role === 'user')?.content || 'New Chat';
+        const title = firstMsg.slice(0, 25) + (firstMsg.length > 25 ? '...' : '');
+        
         const updatedSession = { id: currentSessionId, title, date: Date.now(), messages };
         
         let newHistory;
@@ -113,6 +117,7 @@ const App: React.FC = () => {
       const models = await invoke<string[]>('get_ollama_models');
       if (models && models.length > 0) {
         setAvailableModels(models);
+        // Only switch if current is not in list
         if (!models.includes(selectedModel)) setSelectedModel(models[0]);
       } else {
         setAvailableModels(['llama3', 'mistral']);
@@ -150,7 +155,7 @@ const App: React.FC = () => {
     
     try {
         const procs = await invoke<string[]>('get_system_processes');
-        const context = `Analyze these system processes for me. Are they normal? Just give a brief overview.\n\n${procs.join('\n')}`;
+        const context = `Here is a list of top active processes on my machine:\n${procs.join('\n')}\n\nPlease analyze them briefly for resource usage and anomalies.`;
         const response = await invoke<string>('chat_with_ollama', {
             model: selectedModel,
             messages: [{role: 'system', content: SYSTEM_PROMPT}, { role: 'user', content: context }]
@@ -166,6 +171,7 @@ const App: React.FC = () => {
   const startNewSession = () => {
     setMessages([]);
     setCurrentSessionId(Date.now().toString());
+    inputRef.current?.focus();
   };
 
   return (
@@ -179,7 +185,7 @@ const App: React.FC = () => {
               initial={{ width: 0, opacity: 0 }} 
               animate={{ width: 280, opacity: 1 }} 
               exit={{ width: 0, opacity: 0 }} 
-              className="h-full bg-black/40 backdrop-blur-3xl border-r border-white/5 flex flex-col overflow-hidden shrink-0"
+              className="h-full bg-black/40 backdrop-blur-3xl border-r border-white/5 flex flex-col overflow-hidden shrink-0 z-20"
             >
               <div className="p-4 border-b border-white/5 flex items-center justify-between">
                 <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">History</span>
@@ -198,11 +204,14 @@ const App: React.FC = () => {
                   <button 
                     key={s.id} 
                     onClick={() => { setMessages(s.messages); setCurrentSessionId(s.id); }} 
-                    className={`w-full p-3 text-left rounded-xl text-xs truncate transition-all border ${currentSessionId === s.id ? 'bg-white/10 text-white border-white/10' : 'text-gray-400 hover:bg-white/5 border-transparent'}`}
+                    className={`w-full p-3 text-left rounded-xl text-xs truncate transition-all border group ${currentSessionId === s.id ? 'bg-white/10 text-white border-white/10' : 'text-gray-400 hover:bg-white/5 border-transparent'}`}
                   >
-                    <div className="flex items-center gap-2">
-                       <MessageSquare className="w-3 h-3 opacity-50" />
-                       <span className="truncate">{s.title}</span>
+                    <div className="flex items-center justify-between">
+                       <div className="flex items-center gap-2 overflow-hidden">
+                          <MessageSquare className="w-3 h-3 opacity-50 shrink-0" />
+                          <span className="truncate">{s.title}</span>
+                       </div>
+                       {/* Optional delete button could go here */}
                     </div>
                   </button>
                 ))}
