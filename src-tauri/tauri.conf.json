@@ -13,15 +13,18 @@
     "windows": [
       {
         "title": "Lumina",
-        "width": 920,
-        "height": 700,
+        "width": 900,
+        "height": 680,
         "resizable": false,
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,
         "center": true
       }
-    ]
+    ],
+    "security": {
+      "csp": null
+    }
   },
   "bundle": {
     "active": true,
