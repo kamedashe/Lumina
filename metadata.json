@@ -1,0 +1,5 @@
+{
+  "name": "Lumina AI",
+  "description": "A minimalist, privacy-focused local AI assistant with glassmorphism UI, powered by Tauri, Rust, and Ollama.",
+  "requestFramePermissions": []
+}
