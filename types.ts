@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 export interface Message {
@@ -20,7 +21,7 @@ export interface CommandSuggestion {
   description: string;
 }
 
-// Helper for Tauri Invoke to prevent TS errors in non-Tauri envs (simulated)
+// Helper for Tauri Invoke
 declare global {
   interface Window {
     __TAURI__: {
