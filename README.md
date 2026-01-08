@@ -1,7 +1,7 @@
 # Lumina AI
 
 <div align="center">
-  <img src="./assets/lumina-ai-logo.png" alt="Lumina Logo" width="120" />
+  <img src="./assets/logo-preview.png" alt="Lumina Logo" width="120" />
   <br/>
   <br/>
   
