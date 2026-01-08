@@ -8,39 +8,30 @@ import ReactMarkdown from 'react-markdown';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Message, ChatSession } from './types';
 import { SYSTEM_PROMPT } from './constants';
+// Import official Tauri v2 API
+import { invoke } from '@tauri-apps/api/core';
 
-// --- Safe Invoke Handling ---
-const invoke = async <T,>(cmd: string, args?: any): Promise<T> => {
-  if (window.__TAURI__) {
-    try {
-      return await window.__TAURI__.invoke(cmd, args);
-    } catch (err) {
-      console.warn(`Tauri invoke failed for ${cmd}:`, err);
-      // Fall through to mock data on failure
-    }
-  }
-
-  // --- Mock Data for Development/Preview ---
-  await new Promise(r => setTimeout(r, 800)); // Simulate network latency
-  
-  if (cmd === 'chat_with_ollama') {
-    const userContent = args?.messages?.[args.messages.length - 1]?.content || "";
-    return `**Lumina (Mock):** I am currently running in **UI Preview Mode**. 
+// --- Command Wrapper for Dev/Prod ---
+const runCommand = async <T,>(cmd: string, args?: any): Promise<T> => {
+  try {
+    // Attempt real Tauri invoke
+    return await invoke(cmd, args);
+  } catch (err) {
+    console.warn(`[Tauri] Invoke '${cmd}' failed or running in browser mode:`, err);
     
-To connect to the real local LLM, ensure:
-1. **Ollama** is running locally.
-2. You have pulled the model (e.g., \`ollama pull llama3\`).
-3. The Tauri backend is compiled and running.
-
-Your input was: _"${userContent}"_` as any;
+    // --- Mock Data Fallback ---
+    await new Promise(r => setTimeout(r, 600));
+    
+    if (cmd === 'chat_with_ollama') {
+        const userContent = args?.messages?.[args.messages.length - 1]?.content || "";
+        return `**Lumina Preview:** I cannot connect to the local Tauri backend.\n\nSince you are seeing this, the UI is working, but the connection to Rust/Ollama failed.\n\n*Debug Info:*\n- Input: "${userContent}"\n- Environment: Browser/Webview` as any;
+    }
+    if (cmd === 'get_ollama_models') return ['llama3', 'mistral', 'gemma', 'phi3'] as any;
+    if (cmd === 'get_system_processes') return ['Code.exe (12%)', 'Chrome (45%)', 'Ollama_Service (System)', 'Lumina_App (User)'] as any;
+    
+    throw err;
   }
-  if (cmd === 'get_ollama_models') return ['llama3', 'mistral', 'neural-chat', 'phi3'] as any;
-  if (cmd === 'get_system_processes') return ['Code.exe (Memory: 450MB)', 'Chrome.exe (Memory: 1.2GB)', 'Ollama (GPU: 4GB)', 'Lumina (Memory: 80MB)'] as any;
-  
-  return null as any;
 };
-
-// --- Components ---
 
 const LuminaLogo: React.FC<{ className?: string, withText?: boolean }> = ({ className = "w-8 h-8", withText = false }) => (
   <div className={`flex items-center gap-3 ${withText ? '' : 'justify-center'}`}>
@@ -87,20 +78,18 @@ const App: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Initialize
   useEffect(() => {
     const saved = localStorage.getItem('lumina_history');
     if (saved) {
       try {
         setHistory(JSON.parse(saved));
       } catch (e) {
-        console.error("Failed to parse history", e);
+        console.error("History parse error", e);
       }
     }
     fetchModels();
   }, []);
 
-  // Auto-scroll and save
   useEffect(() => {
     if (messages.length > 0) {
       scrollToBottom();
@@ -113,7 +102,7 @@ const App: React.FC = () => {
     setHistory(prev => {
         const existingIndex = prev.findIndex(s => s.id === currentSessionId);
         const firstMsg = messages.find(m => m.role === 'user')?.content || 'New Chat';
-        const title = firstMsg.length > 30 ? firstMsg.substring(0, 30) + '...' : firstMsg;
+        const title = firstMsg.length > 25 ? firstMsg.substring(0, 25) + '...' : firstMsg;
         
         const updatedSession = { id: currentSessionId, title, date: Date.now(), messages };
         
@@ -135,15 +124,15 @@ const App: React.FC = () => {
 
   const fetchModels = async () => {
     try {
-      const models = await invoke<string[]>('get_ollama_models');
+      const models = await runCommand<string[]>('get_ollama_models');
       if (models && models.length > 0) {
         setAvailableModels(models);
         if (!models.includes(selectedModel)) setSelectedModel(models[0]);
       } else {
-        setAvailableModels(['llama3', 'mistral']); // Fallback
+        setAvailableModels(['llama3', 'mistral']); 
       }
     } catch (e) {
-      setAvailableModels(['llama3', 'mistral']); // Fallback
+      setAvailableModels(['llama3', 'mistral']); 
     }
   };
 
@@ -155,14 +144,14 @@ const App: React.FC = () => {
     setIsLoading(true);
 
     try {
-        const response = await invoke<string>('chat_with_ollama', {
+        const response = await runCommand<string>('chat_with_ollama', {
           model: selectedModel,
           messages: [{role: 'system', content: SYSTEM_PROMPT}, ...messages, userMsg]
         });
         
         setMessages(prev => [...prev, { role: 'assistant', content: response }]);
     } catch (e: any) {
-      setMessages(prev => [...prev, { role: 'assistant', content: "Error: Could not connect to the AI engine. Is Ollama running?" }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: "Error: Failed to communicate with the AI engine. Check if Ollama is running." }]);
     } finally {
       setIsLoading(false);
     }
@@ -174,15 +163,15 @@ const App: React.FC = () => {
     setMessages(prev => [...prev, sysMsg]);
     
     try {
-        const procs = await invoke<string[]>('get_system_processes');
-        const context = `Top active processes:\n${procs.join('\n')}\n\nAnalyze these for high resource usage.`;
-        const response = await invoke<string>('chat_with_ollama', {
+        const procs = await runCommand<string[]>('get_system_processes');
+        const context = `System Processes Snapshot:\n${procs.join('\n')}\n\nAnalyze these processes briefly.`;
+        const response = await runCommand<string>('chat_with_ollama', {
             model: selectedModel,
             messages: [{role: 'system', content: SYSTEM_PROMPT}, { role: 'user', content: context }]
         });
         setMessages(prev => [...prev, { role: 'assistant', content: response }]);
     } catch (e) {
-        setMessages(prev => [...prev, { role: 'assistant', content: "Unable to access process list." }]);
+        setMessages(prev => [...prev, { role: 'assistant', content: "Could not retrieve process list." }]);
     } finally {
         setIsLoading(false);
     }
