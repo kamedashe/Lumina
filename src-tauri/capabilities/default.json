@@ -24,6 +24,27 @@
     "core:window:allow-close",
     "core:window:allow-toggle-maximize",
     "core:window:allow-start-dragging",
-    "core:window:allow-set-shadow"
+    "core:window:allow-set-shadow",
+    "dialog:default",
+    "fs:allow-write-text-file",
+    "fs:allow-read-text-file",
+    "fs:allow-read-dir",
+    "fs:allow-mkdir",
+    "fs:allow-exists",
+    "fs:allow-app-write",
+    "fs:allow-app-read",
+    "fs:allow-home-write",
+    "fs:allow-desktop-write",
+    "fs:default",
+    {
+      "identifier": "fs:scope",
+      "allow": [
+        "$HOME/**",
+        "$DOWNLOADS/**",
+        "$DOCUMENTS/**",
+        "$DESKTOP/**",
+        "**"
+      ]
+    }
   ]
 }
