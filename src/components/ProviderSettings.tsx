@@ -1,15 +1,18 @@
 import React, { useState } from 'react';
-import { X, Plus, Trash2, RefreshCw, CheckCircle2, XCircle, Server, Cloud, KeyRound } from 'lucide-react';
-import { ProviderConfig } from '../types';
+import { X, Plus, Trash2, RefreshCw, CheckCircle2, XCircle, Server, Cloud, KeyRound, Database } from 'lucide-react';
+import { ProviderConfig, VectorStoreConfig } from '../types';
 import { PROVIDER_PRESETS, makeProviderId } from '../constants';
 import { aiService } from '../services/ai';
+import { VectorStoreSettings } from './VectorStoreSettings';
 
 type TestState = 'idle' | 'testing' | 'ok' | 'fail';
 
 type Props = {
     providers: ProviderConfig[];
     activeId: string;
+    store: VectorStoreConfig;
     onChange: (providers: ProviderConfig[]) => void;
+    onStoreChange: (store: VectorStoreConfig) => void;
     onSelect: (id: string) => void;
     onClose: () => void;
 };
@@ -17,11 +20,14 @@ type Props = {
 export const ProviderSettings: React.FC<Props> = ({
     providers,
     activeId,
+    store,
     onChange,
+    onStoreChange,
     onSelect,
     onClose,
 }) => {
     const [editingId, setEditingId] = useState<string | null>(activeId);
+    const [view, setView] = useState<'provider' | 'store'>('provider');
     const [models, setModels] = useState<string[]>([]);
     const [testState, setTestState] = useState<TestState>('idle');
     const [testMsg, setTestMsg] = useState<string>('');
@@ -97,13 +103,14 @@ export const ProviderSettings: React.FC<Props> = ({
                             <button
                                 key={p.id}
                                 onClick={() => {
+                                    setView('provider');
                                     setEditingId(p.id);
                                     setModels([]);
                                     setTestState('idle');
                                     setTestMsg('');
                                 }}
                                 className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2 transition-colors ${
-                                    editingId === p.id
+                                    view === 'provider' && editingId === p.id
                                         ? 'bg-elevated text-fg'
                                         : 'text-muted hover:bg-elevated/60 hover:text-fg'
                                 }`}
@@ -113,6 +120,21 @@ export const ProviderSettings: React.FC<Props> = ({
                                 {activeId === p.id && <span className="w-1.5 h-1.5 rounded-full bg-accent" />}
                             </button>
                         ))}
+
+                        <div className="pt-3 mt-2 border-t border-border">
+                            <button
+                                onClick={() => setView('store')}
+                                className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2 transition-colors ${
+                                    view === 'store'
+                                        ? 'bg-elevated text-fg'
+                                        : 'text-muted hover:bg-elevated/60 hover:text-fg'
+                                }`}
+                            >
+                                <Database size={14} />
+                                <span className="truncate flex-1">Хранилище (RAG)</span>
+                                <span className="text-[10px] text-subtle uppercase">{store.kind}</span>
+                            </button>
+                        </div>
                     </div>
                     <div className="p-2 border-t border-border">
                         <details className="group">
@@ -137,7 +159,9 @@ export const ProviderSettings: React.FC<Props> = ({
                 {/* Правая колонка: редактор выбранного провайдера */}
                 <div className="flex-1 flex flex-col min-w-0">
                     <div className="px-5 h-14 flex items-center justify-between border-b border-border">
-                        <span className="text-sm font-semibold">Настройки</span>
+                        <span className="text-sm font-semibold">
+                            {view === 'store' ? 'Векторное хранилище' : 'Настройки провайдера'}
+                        </span>
                         <button
                             onClick={onClose}
                             className="w-8 h-8 flex items-center justify-center rounded-md text-muted hover:text-fg hover:bg-elevated"
@@ -146,7 +170,11 @@ export const ProviderSettings: React.FC<Props> = ({
                         </button>
                     </div>
 
-                    {!editing ? (
+                    {view === 'store' ? (
+                        <div className="flex-1 overflow-y-auto custom-scrollbar p-5">
+                            <VectorStoreSettings store={store} onChange={onStoreChange} />
+                        </div>
+                    ) : !editing ? (
                         <div className="flex-1 flex items-center justify-center text-sm text-subtle">
                             Добавьте провайдера слева, чтобы начать.
                         </div>

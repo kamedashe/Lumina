@@ -3,8 +3,10 @@
 mod providers;
 mod rag;
 mod tools;
+mod vector;
 
 use providers::{ChatMessage, ProviderConfig, StreamEvent};
+use vector::{StoreCtx, VectorStoreConfig};
 use rquickjs::{prelude::*, Context, Runtime};
 use serde_json::Value;
 use tauri::ipc::Channel;
@@ -29,6 +31,7 @@ fn http_client() -> reqwest::Client {
 async fn run_agent(
     app: tauri::AppHandle,
     config: ProviderConfig,
+    store: VectorStoreConfig,
     system: String,
     messages: Vec<ChatMessage>,
     attachments: Vec<String>,
@@ -48,7 +51,7 @@ async fn run_agent(
         let embed_config = embedding_config(&config);
 
         if let Err(e) =
-            rag::process_documents(&app, &client, &embed_config, &attachments).await
+            rag::process_documents(&app, &client, &embed_config, &store, &attachments).await
         {
             let _ = on_event.send(StreamEvent::Error { message: e });
             let _ = on_event.send(StreamEvent::Done {
@@ -60,7 +63,8 @@ async fn run_agent(
         if let Some(last) = history.last_mut() {
             let query = last.content.clone();
             if let Ok(context) =
-                rag::search_documents(&app, &client, &embed_config, &query, &attachments).await
+                rag::search_documents(&app, &client, &embed_config, &store, &query, &attachments)
+                    .await
             {
                 if !context.trim().is_empty() {
                     last.content = format!(
@@ -113,7 +117,9 @@ async fn run_agent(
                         .unwrap_or("")
                         .to_string();
                     let embed_config = embedding_config(&config);
-                    match rag::search_documents(&app, &client, &embed_config, &query, &[]).await {
+                    match rag::search_documents(&app, &client, &embed_config, &store, &query, &[])
+                        .await
+                    {
                         Ok(ctx) if ctx.trim().is_empty() => {
                             ("Ничего не найдено в проиндексированных документах.".into(), false)
                         }
@@ -191,6 +197,19 @@ async fn test_provider(config: ProviderConfig) -> Result<bool, String> {
     providers::list_models(&client, &config).await.map(|_| true)
 }
 
+/// Проверка векторного хранилища: для Pinecone заодно показывает размерность
+/// индекса, чтобы сразу увидеть несовпадение с моделью эмбеддингов.
+#[tauri::command]
+async fn test_vector_store(app: tauri::AppHandle, store: VectorStoreConfig) -> Result<String, String> {
+    let client = http_client();
+    let ctx = StoreCtx {
+        app: &app,
+        client: &client,
+        config: &store,
+    };
+    vector::health(&ctx).await
+}
+
 #[tauri::command]
 async fn run_plugin(code: String) -> Result<String, String> {
     let rt = Runtime::new().map_err(|e: rquickjs::Error| e.to_string())?;
@@ -242,6 +261,7 @@ fn main() {
             run_agent,
             list_models,
             test_provider,
+            test_vector_store,
             run_plugin
         ])
         .run(tauri::generate_context!())

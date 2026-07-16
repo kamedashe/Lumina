@@ -1,5 +1,5 @@
 import { invoke, Channel } from '@tauri-apps/api/core';
-import { ProviderConfig, StreamEvent, WireMessage } from '../types';
+import { ProviderConfig, StreamEvent, VectorStoreConfig, WireMessage } from '../types';
 
 export const aiService = {
     /**
@@ -8,6 +8,7 @@ export const aiService = {
      */
     async runAgent(params: {
         config: ProviderConfig;
+        store: VectorStoreConfig;
         system: string;
         messages: WireMessage[];
         attachments: string[];
@@ -18,6 +19,7 @@ export const aiService = {
 
         await invoke('run_agent', {
             config: params.config,
+            store: params.store,
             system: params.system,
             messages: params.messages,
             attachments: params.attachments,
@@ -36,5 +38,10 @@ export const aiService = {
 
     async testProvider(config: ProviderConfig): Promise<boolean> {
         return await invoke<boolean>('test_provider', { config });
+    },
+
+    /** Проверка векторного хранилища. Возвращает описание состояния индекса. */
+    async testVectorStore(store: VectorStoreConfig): Promise<string> {
+        return await invoke<string>('test_vector_store', { store });
     },
 };

@@ -51,6 +51,16 @@ export type ProviderConfig = {
     embedding_model?: string;
 };
 
+export type VectorStoreKind = 'sqlite' | 'pinecone';
+
+/** Конфигурация векторного хранилища (совпадает с Rust VectorStoreConfig). */
+export type VectorStoreConfig = {
+    kind: VectorStoreKind;
+    api_key?: string;
+    index_name?: string;
+    namespace?: string;
+};
+
 /** События потока из бэкенда (совпадает с Rust StreamEvent). */
 export type StreamEvent =
     | { type: 'text'; delta: string }

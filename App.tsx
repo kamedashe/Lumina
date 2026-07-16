@@ -12,7 +12,7 @@ import { ProviderSettings } from './src/components/ProviderSettings.tsx';
 import { aiService } from './src/services/ai.ts';
 import { pluginService } from './src/services/plugins.ts';
 import { SYSTEM_PROMPT, defaultProvider } from './src/constants.ts';
-import { Message, ChatSession, ProviderConfig, WireMessage, ToolInvocation } from './src/types/index.ts';
+import { Message, ChatSession, ProviderConfig, WireMessage, ToolInvocation, VectorStoreConfig } from './src/types/index.ts';
 
 type Theme = 'light' | 'dark';
 
@@ -27,6 +27,7 @@ const App: React.FC = () => {
 
     const [providers, setProviders] = useState<ProviderConfig[]>([]);
     const [activeProviderId, setActiveProviderId] = useState<string>('');
+    const [store, setStore] = useState<VectorStoreConfig>({ kind: 'sqlite' });
 
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [showSettings, setShowSettings] = useState(false);
@@ -63,6 +64,13 @@ const App: React.FC = () => {
 
         const savedActive = localStorage.getItem('lumina_active_provider');
         setActiveProviderId(savedActive && loaded.some((p) => p.id === savedActive) ? savedActive : loaded[0].id);
+
+        const savedStore = localStorage.getItem('lumina_vector_store');
+        if (savedStore) {
+            try {
+                setStore(JSON.parse(savedStore));
+            } catch { /* ignore */ }
+        }
     }, []);
 
     // --- ПЕРСИСТ ---
@@ -77,6 +85,10 @@ const App: React.FC = () => {
     useEffect(() => {
         if (activeProviderId) localStorage.setItem('lumina_active_provider', activeProviderId);
     }, [activeProviderId]);
+
+    useEffect(() => {
+        localStorage.setItem('lumina_vector_store', JSON.stringify(store));
+    }, [store]);
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -158,6 +170,7 @@ const App: React.FC = () => {
             try {
                 await aiService.runAgent({
                     config: activeProvider,
+                    store,
                     system: SYSTEM_PROMPT,
                     messages: toWire(baseMessages),
                     attachments: sentAttachments,
@@ -214,7 +227,7 @@ const App: React.FC = () => {
                 if (isNew) inputRef.current?.focus();
             }
         },
-        [input, attachments, isLoading, messages, currentChatId, activeProvider],
+        [input, attachments, isLoading, messages, currentChatId, activeProvider, store],
     );
 
     const startNewChat = () => {
@@ -472,7 +485,9 @@ const App: React.FC = () => {
                 <ProviderSettings
                     providers={providers}
                     activeId={activeProviderId}
+                    store={store}
                     onChange={setProviders}
+                    onStoreChange={setStore}
                     onSelect={setActiveProviderId}
                     onClose={() => setShowSettings(false)}
                 />
