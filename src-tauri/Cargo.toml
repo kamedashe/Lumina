@@ -8,6 +8,16 @@ edition = "2021"
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
+# Дефолтный dev-профиль собирает всё, включая зависимости, с полной отладочной
+# информацией (debug = 2). Для чужих крейтов она не нужна, а .rlib раздувает
+# так, что на машине с занятым commit-лимитом rustc падает с
+# «failed to mmap ... файл подкачки слишком мал» (os error 1455).
+[profile.dev]
+debug = 1 # строки для трейсбеков нашего кода оставляем
+
+[profile.dev.package."*"]
+debug = false # зависимости отлаживать не собираемся
+
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-shell = "2"
