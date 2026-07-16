@@ -31,12 +31,15 @@ Available tools:
 ### 📚 RAG with a Pluggable Vector Store
 Indexes PDF, TXT, MD, JSON, and source code as chunked embeddings. Search is scoped to the files you attach, and re-indexing replaces stale chunks instead of duplicating them. Embeddings run through your provider, with an automatic local-Ollama fallback for Anthropic (which has no embeddings endpoint).
 
-Two interchangeable backends, selectable in Settings → Storage:
+Three interchangeable backends, selectable in Settings → Storage:
 
 | Backend | Trade-off |
 |---|---|
-| **SQLite** (default) | Fully local — nothing leaves your machine. Brute-force cosine similarity, so search cost grows linearly with the number of chunks. Ideal for a personal document set. |
-| **Pinecone** (serverless) | Managed ANN search that stays fast at scale and survives a reinstall. **Chunk text is uploaded**, since it lives in vector metadata — don't point it at confidential documents. |
+| **sqlite-vec** (default) | Fully local. Vectors are stored as compact binary blobs and distances computed by the extension's SIMD code. Note this is still an **exhaustive scan, not ANN** — [ANN indexes are planned but not shipped](https://github.com/asg017/sqlite-vec/issues/25) — it simply has a far better constant factor than the naive backend. |
+| **SQLite** | Dependency-free fallback. Embeddings are stored as JSON and re-parsed on every query, which dominates the cost. Kept for existing indexes and as an escape hatch. |
+| **Pinecone** (serverless) | Genuine managed ANN that stays fast at scale and survives a reinstall. **Chunk text is uploaded**, since it lives in vector metadata — don't point it at confidential documents. |
+
+> **sqlite-vec note:** `vec0` fixes the vector dimension at table creation, so switching embedding models rebuilds the index — re-attach your documents. TEXT metadata columns support only `=` / `!=` (no `IN`), so scoping a search to several attached files issues one KNN query per file and merges the results.
 
 > **Pinecone note:** serverless indexes don't support delete-by-metadata-filter, so chunk IDs are structured as `{path_hash}#{chunk_index}` and re-indexing deletes via list-by-prefix. Index dimension must match your embedding model (`nomic-embed-text` = 768, `text-embedding-3-small` = 1536); the app checks this and reports a mismatch instead of letting Pinecone return an opaque 400.
 
@@ -55,7 +58,7 @@ A clean, restrained interface: light and dark themes driven by CSS variables, na
 
 - **Backend:** [Rust](https://www.rust-lang.org/) + [Tauri v2](https://tauri.app/) — provider clients, agent loop, RAG, streaming
 - **Frontend:** [React 19](https://react.dev/) + [TypeScript](https://www.typescriptlang.org/) + [Vite 6](https://vitejs.dev/)
-- **Vector store:** [rusqlite (SQLite)](https://github.com/rusqlite/rusqlite) locally, or [Pinecone](https://www.pinecone.io/) serverless in the cloud
+- **Vector store:** [sqlite-vec](https://github.com/asg017/sqlite-vec) / [rusqlite (SQLite)](https://github.com/rusqlite/rusqlite) locally, or [Pinecone](https://www.pinecone.io/) serverless in the cloud
 - **JS Engine:** [rquickjs (QuickJS)](https://github.com/DelSkayn/rquickjs) — plugin sandbox
 - **Styling:** [Tailwind CSS](https://tailwindcss.com/) with CSS-variable theming
 
@@ -92,7 +95,7 @@ The local Ollama preset is active on first launch. To add a cloud provider, open
 ```
 src-tauri/src/
   providers/        # LLM clients: ollama, openai, anthropic, gemini + SSE/NDJSON parser
-  vector/           # Vector store backends: sqlite (local), pinecone (cloud)
+  vector/           # Vector store backends: sqlite_vec, sqlite (local), pinecone (cloud)
   tools.rs          # Agent tool definitions and local execution
   rag.rs            # Text extraction, chunking, search orchestration
   main.rs           # Agent loop, Tauri commands, streaming channel

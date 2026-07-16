@@ -5,21 +5,25 @@
 
 pub mod pinecone;
 pub mod sqlite;
+pub mod sqlite_vec;
 
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum VectorStoreKind {
-    /// Локальный SQLite с полным перебором и косинусным сходством.
+    /// Локальный SQLite: перебор с разбором JSON-эмбеддингов на каждый запрос.
+    /// Медленно, зато без сторонних расширений.
     Sqlite,
+    /// Локальный SQLite с расширением sqlite-vec: бинарные векторы и SIMD.
+    SqliteVec,
     /// Облачный Pinecone (serverless).
     Pinecone,
 }
 
 impl Default for VectorStoreKind {
     fn default() -> Self {
-        Self::Sqlite
+        Self::SqliteVec
     }
 }
 
@@ -98,6 +102,7 @@ pub fn path_key(path: &str) -> String {
 pub async fn upsert(ctx: &StoreCtx<'_>, chunks: &[Chunk]) -> Result<(), String> {
     match ctx.config.kind {
         VectorStoreKind::Sqlite => sqlite::upsert(ctx, chunks),
+        VectorStoreKind::SqliteVec => sqlite_vec::upsert(ctx, chunks),
         VectorStoreKind::Pinecone => pinecone::upsert(ctx, chunks).await,
     }
 }
@@ -106,6 +111,7 @@ pub async fn upsert(ctx: &StoreCtx<'_>, chunks: &[Chunk]) -> Result<(), String> 
 pub async fn delete_by_path(ctx: &StoreCtx<'_>, path: &str) -> Result<(), String> {
     match ctx.config.kind {
         VectorStoreKind::Sqlite => sqlite::delete_by_path(ctx, path),
+        VectorStoreKind::SqliteVec => sqlite_vec::delete_by_path(ctx, path),
         VectorStoreKind::Pinecone => pinecone::delete_by_path(ctx, path).await,
     }
 }
@@ -119,6 +125,7 @@ pub async fn query(
 ) -> Result<Vec<SearchHit>, String> {
     match ctx.config.kind {
         VectorStoreKind::Sqlite => sqlite::query(ctx, embedding, scope, top_k),
+        VectorStoreKind::SqliteVec => sqlite_vec::query(ctx, embedding, scope, top_k),
         VectorStoreKind::Pinecone => pinecone::query(ctx, embedding, scope, top_k).await,
     }
 }
@@ -128,6 +135,7 @@ pub async fn query(
 pub async fn health(ctx: &StoreCtx<'_>) -> Result<String, String> {
     match ctx.config.kind {
         VectorStoreKind::Sqlite => sqlite::health(ctx),
+        VectorStoreKind::SqliteVec => sqlite_vec::health(ctx),
         VectorStoreKind::Pinecone => pinecone::health(ctx).await,
     }
 }

@@ -51,7 +51,7 @@ export type ProviderConfig = {
     embedding_model?: string;
 };
 
-export type VectorStoreKind = 'sqlite' | 'pinecone';
+export type VectorStoreKind = 'sqlite' | 'sqlite_vec' | 'pinecone';
 
 /** Конфигурация векторного хранилища (совпадает с Rust VectorStoreConfig). */
 export type VectorStoreConfig = {

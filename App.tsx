@@ -27,7 +27,7 @@ const App: React.FC = () => {
 
     const [providers, setProviders] = useState<ProviderConfig[]>([]);
     const [activeProviderId, setActiveProviderId] = useState<string>('');
-    const [store, setStore] = useState<VectorStoreConfig>({ kind: 'sqlite' });
+    const [store, setStore] = useState<VectorStoreConfig>({ kind: 'sqlite_vec' });
 
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [showSettings, setShowSettings] = useState(false);

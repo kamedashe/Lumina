@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { HardDrive, Cloud, CheckCircle2, XCircle, RefreshCw, KeyRound, ShieldAlert } from 'lucide-react';
+import { HardDrive, Cloud, Zap, CheckCircle2, XCircle, RefreshCw, KeyRound, ShieldAlert } from 'lucide-react';
 import { VectorStoreConfig, VectorStoreKind } from '../types';
 import { aiService } from '../services/ai';
 
@@ -30,15 +30,16 @@ export const VectorStoreSettings: React.FC<Props> = ({ store, onChange }) => {
     };
 
     const options: { kind: VectorStoreKind; icon: typeof HardDrive; title: string; note: string }[] = [
-        { kind: 'sqlite', icon: HardDrive, title: 'Локально (SQLite)', note: 'Данные не покидают машину' },
-        { kind: 'pinecone', icon: Cloud, title: 'Pinecone', note: 'Облачный ANN-поиск' },
+        { kind: 'sqlite_vec', icon: Zap, title: 'sqlite-vec', note: 'Локально, быстрый перебор' },
+        { kind: 'sqlite', icon: HardDrive, title: 'SQLite', note: 'Локально, без расширений' },
+        { kind: 'pinecone', icon: Cloud, title: 'Pinecone', note: 'Облако, ANN-индекс' },
     ];
 
     return (
         <div className="space-y-5">
             <div className="space-y-1.5">
                 <label className="text-xs font-medium text-muted">Векторное хранилище</label>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                     {options.map((o) => (
                         <button
                             key={o.kind}
@@ -60,6 +61,22 @@ export const VectorStoreSettings: React.FC<Props> = ({ store, onChange }) => {
                     ))}
                 </div>
             </div>
+
+            {store.kind === 'sqlite_vec' && (
+                <p className="text-[11px] leading-relaxed text-subtle">
+                    Векторы лежат бинарными блобами, расстояния считает SIMD-код расширения.
+                    Это <b>не ANN</b> — перебор остаётся полным, но во много раз дешевле, чем
+                    разбирать JSON на каждой строке. При смене модели эмбеддингов индекс
+                    пересоздаётся автоматически: документы нужно прикрепить заново.
+                </p>
+            )}
+
+            {store.kind === 'sqlite' && (
+                <p className="text-[11px] leading-relaxed text-subtle">
+                    Запасной вариант без сторонних расширений: эмбеддинги хранятся как JSON и
+                    разбираются на каждый запрос. Работает везде, но заметно медленнее sqlite-vec.
+                </p>
+            )}
 
             {store.kind === 'pinecone' && (
                 <>
