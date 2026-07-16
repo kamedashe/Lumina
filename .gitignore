@@ -9,6 +9,10 @@ src-tauri/target/
 src-tauri/gen/
 src-tauri/schemas/
 
+# Local data
+src-tauri/*.db
+test.txt
+
 # IDEs
 .vscode
 .idea

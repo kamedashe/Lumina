@@ -1,43 +1,40 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke, Channel } from '@tauri-apps/api/core';
+import { ProviderConfig, StreamEvent, WireMessage } from '../types';
 
 export const aiService = {
-    async getModels(): Promise<string[]> {
-        try {
-            return await invoke<string[]>('get_ollama_models');
-        } catch (e) {
-            console.error('Failed to fetch models:', e);
-            return [];
-        }
-    },
+    /**
+     * Запускает агентный цикл. Вся история диалога уходит на бэкенд, ответ
+     * стримится обратно через Channel по мере генерации.
+     */
+    async runAgent(params: {
+        config: ProviderConfig;
+        system: string;
+        messages: WireMessage[];
+        attachments: string[];
+        onEvent: (event: StreamEvent) => void;
+    }): Promise<void> {
+        const channel = new Channel<StreamEvent>();
+        channel.onmessage = params.onEvent;
 
-    async chat(prompt: string, model: string, temperature: number): Promise<string> {
-        return await invoke<string>('chat_with_ollama', {
-            model,
-            prompt,
-            temperature
+        await invoke('run_agent', {
+            config: params.config,
+            system: params.system,
+            messages: params.messages,
+            attachments: params.attachments,
+            onEvent: channel,
         });
     },
 
-    async generateTitle(firstMessage: string, model: string): Promise<string> {
+    async listModels(config: ProviderConfig): Promise<string[]> {
         try {
-            const title = await invoke<string>('chat_with_ollama', {
-                model,
-                prompt: `Generate a very short title (max 4 words) for a chat that starts with this message: "${firstMessage}". Do not use quotes. Just the title.`,
-                temperature: 0.3
-            });
-            return title.trim();
+            return await invoke<string[]>('list_models', { config });
         } catch (e) {
-            return firstMessage.slice(0, 20) + "...";
+            console.error('listModels failed:', e);
+            throw e;
         }
     },
 
-
-
-    async processDocuments(paths: string[]): Promise<string> {
-        return await invoke<string>('process_documents', { paths });
+    async testProvider(config: ProviderConfig): Promise<boolean> {
+        return await invoke<boolean>('test_provider', { config });
     },
-
-    async searchDocuments(query: string): Promise<string> {
-        return await invoke<string>('search_documents', { query });
-    }
 };

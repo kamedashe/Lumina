@@ -1,66 +1,64 @@
-# Lumina 💎 — Agentic OS Assistant
+# Lumina 💎 — Agentic Desktop Assistant
 
-**Lumina** — это продвинутый агентный AI-ассистент для рабочего стола, объединяющий мощь локальных языковых моделей с прямым доступом к системе. В отличие от обычных чат-ботов, Lumina может взаимодействовать с вашими файлами, анализировать процессы и выполнять код в безопасной песочнице.
+**Lumina** — агентный AI-ассистент для рабочего стола: подключается к любому LLM-провайдеру (локальному или облачному), стримит ответы в реальном времени и умеет работать с вашей системой через нативный tool-calling — файлы, процессы, семантический поиск по документам.
 
-**Lumina** is an advanced Agentic OS Assistant that bridges the gap between local LLMs and system-level operations. Unlike standard chatbots, Lumina can interact with your file system, analyze system processes, and execute custom plugins in a secure sandbox.
-
-[English](#-key-specialization) | [Русский](#-специализация)
-
----
-
-## 🚀 Key Specialization / Специализация
-
-### 🤖 Agentic Workflows / Агентные функции
-Lumina может выполнять сложные задачи, используя встроенные инструменты:
-- **Составление отчетов**: Анализ структуры проекта.
-- **Управление файлами**: Чтение и создание файлов напрямую.
-- **Системная осведомленность**: Просмотр запущенных процессов и системной информации.
-
-Lumina performs complex tasks via built-in system tools:
-- **Workspace Analytics**: Recursive reporting of project structures.
-- **File Orchestration**: Direct reading and creation of workspace files.
-- **System Awareness**: Monitoring active processes and environment state.
-
-### 📚 Local RAG (Knowledge Base) / Локальный RAG
-Поддержка **Retrieval-Augmented Generation**:
-- Индексация PDF, TXT, MD, JSON и исходного кода (Rust, TS, JS).
-- Поиск по смыслу в локальной векторной базе данных (SQLite + Эмбеддинги).
-- Ответы на основе ваших документов без отправки данных в облако.
-
-Full **Retrieval-Augmented Generation** support:
-- Indexing PDF, TXT, MD, JSON, and source code (Rust, TS, JS).
-- Semantic search using a local vector store (SQLite + Embeddings).
-- Context-aware answers based exclusively on your local data.
-
-### 🔌 Plugin System / Система плагинов
-Безопасная песочница **QuickJS**:
-- Выполнение произвольного JavaScript кода внутри Rust-окружения.
-- Автоматизация рутинных задач через кастомные скрипты ("Blocks").
-
-Secure **QuickJS** sandbox:
-- Execution of arbitrary JavaScript code isolated within Rust.
-- Automation of routine tasks via custom logic "Blocks".
+**Lumina** is an agentic desktop AI assistant: connect any LLM provider (local or cloud), stream responses in real time, and let the model act on your system through native tool-calling — files, processes, and semantic search over your documents.
 
 ---
 
 ## ✨ Features / Возможности
 
-- 🧠 **Ollama Powered:** Использование любых локальных моделей (Llama 3, Mistral, Gemma).
-- 🎨 **Premium UI:** Интерфейс с эффектом **Acrylic/Mica**, глубоким размытием и плавными анимациями.
-- 🔒 **Privacy First:** Полная автономность — данные не покидают компьютер.
-- ⚡ **Turbo Performance:** Минимальное потребление ресурсов благодаря Rust-бэкенду.
-- 🌐 **Web Integration:** Интеллектуальный поиск информации в сети.
+### 🌐 Multi-Provider / Мультипровайдерность
+Один интерфейс — любые модели. Ключи хранятся локально, все запросы идут через Rust-бэкенд:
+- **Ollama** — локальные модели (Llama 3, Mistral, Gemma), без ключа
+- **OpenAI-совместимые** — OpenAI, OpenRouter, Groq, LM Studio, vLLM (любой `base_url`)
+- **Anthropic** — Claude через Messages API
+- **Google Gemini** — generateContent + function calling
+
+One UI — any model. API keys never leave your machine; every request goes through the Rust backend:
+- **Ollama** — local models, no key required
+- **OpenAI-compatible** — OpenAI, OpenRouter, Groq, LM Studio, vLLM (any `base_url`)
+- **Anthropic** (Claude) and **Google Gemini**
+
+### 🤖 Agentic Tool-Calling / Агентный цикл
+Настоящий tool-calling через нативные API провайдеров (не парсинг текста): модель запрашивает инструмент → Rust выполняет его → результат возвращается модели → цикл продолжается до финального ответа. Инструменты:
+- `list_files` / `read_file` / `write_file` — работа с файловой системой
+- `get_current_dir`, `list_processes` — системная осведомлённость
+- `search_documents` — семантический поиск по прикреплённым документам
+
+Real agentic loop via native provider tool-calling APIs (no text parsing): the model requests a tool → Rust executes it → the result goes back to the model → the loop continues until a final answer. Tool results are shown as expandable badges in the chat.
+
+### 📚 Local RAG / Локальный RAG
+- Индексация PDF, TXT, MD, JSON и исходного кода (чанки + эмбеддинги в SQLite)
+- Поиск ограничивается прикреплёнными файлами; переиндексация не плодит дубликаты
+- Эмбеддинги через провайдера (для Claude — автоматический фолбэк на локальный Ollama)
+
+Chunked embeddings stored in local SQLite; search is scoped to attached files; re-indexing replaces stale chunks. Embeddings go through your provider (with an automatic local-Ollama fallback for Anthropic).
+
+### ⚡ Streaming UI
+Ответы стримятся токен за токеном через Tauri IPC Channel (SSE/NDJSON-парсинг на стороне Rust) — с индикатором статуса агента и мигающим курсором.
+
+Token-by-token streaming over a Tauri IPC Channel (SSE/NDJSON parsed in Rust), with agent status indicators.
+
+### 🔌 Plugin System / Плагины
+Безопасная песочница **QuickJS** — выполнение JavaScript внутри Rust-окружения.
+
+Secure **QuickJS** sandbox for running JavaScript inside the Rust environment.
+
+### 🎨 Modern UI
+Сдержанный современный интерфейс: светлая и тёмная темы, системный Acrylic-эффект, аккуратная типографика Markdown с блоками кода и таблицами.
+
+Clean, restrained UI: light & dark themes, native Acrylic effect, proper Markdown typography with code blocks and tables.
 
 ---
 
-## 🛠 Tech Stack / Стек технологий
+## 🛠 Tech Stack
 
-- **Backend:** [Rust](https://www.rust-lang.org/) + [Tauri v2](https://tauri.app/)
-- **Frontend:** [React 19](https://react.dev/), [TypeScript](https://www.typescriptlang.org/), [Vite 6](https://vitejs.dev/)
-- **Database:** [Rusqlite (SQLite)](https://github.com/rusqlite/rusqlite) for RAG context.
-- **JS Engine:** [rquickjs (QuickJS)](https://github.com/DelSkayn/rquickjs) for plugins.
-- **Styling:** [Tailwind CSS](https://tailwindcss.com/), [Framer Motion](https://www.framer.com/motion/)
-- **AI Core:** [Ollama](https://ollama.com/) (REST API)
+- **Backend:** [Rust](https://www.rust-lang.org/) + [Tauri v2](https://tauri.app/) — provider clients, agent loop, RAG, streaming
+- **Frontend:** [React 19](https://react.dev/) + [TypeScript](https://www.typescriptlang.org/) + [Vite 6](https://vitejs.dev/)
+- **Database:** [rusqlite (SQLite)](https://github.com/rusqlite/rusqlite) — RAG vector store
+- **JS Engine:** [rquickjs (QuickJS)](https://github.com/DelSkayn/rquickjs) — plugin sandbox
+- **Styling:** [Tailwind CSS](https://tailwindcss.com/) + CSS variables (theming)
 
 ---
 
@@ -69,33 +67,44 @@ Secure **QuickJS** sandbox:
 ### Requirements / Требования
 1. **Node.js** (LTS)
 2. **Rust** & Cargo
-3. **Ollama** (запущенный локально)
-4. Модель для эмбеддингов: `ollama pull nomic-embed-text`
+3. Хотя бы один провайдер / at least one provider:
+   - локально / local: [Ollama](https://ollama.com/) или LM Studio
+   - или облачный API-ключ / or a cloud API key: OpenAI, OpenRouter, Groq, Anthropic, Gemini
+4. Для RAG с локальными эмбеддингами / for RAG with local embeddings: `ollama pull nomic-embed-text`
 
 ### Installation / Установка
 ```bash
-# Clone the repo
 git clone https://github.com/kamedashe/Lumina.git
 cd Lumina
 
-# Install dependencies
 npm install
 
-# Run in dev mode
 npm run tauri dev
 ```
+
+При первом запуске активен локальный Ollama. Облачные провайдеры добавляются в настройках (⚙): выберите пресет, вставьте ключ, нажмите «Модели» для проверки связи.
+
+On first launch the local Ollama preset is active. Add cloud providers in Settings (⚙): pick a preset, paste your key, hit "Models" to verify the connection.
 
 ---
 
 ## 📄 Project Structure / Структура проекта
 
-- `src/` — React frontend (Home of the Agent UI).
-- `src-tauri/` — Rust backend (Core logic, DB, Plugin system, System API).
-- `src/services/` — Logic for AI, Agents, and Plugins.
-- `PLUGINS.md` — Documentation for the plugin system.
+```
+src-tauri/src/
+  providers/        # LLM clients: ollama, openai, anthropic, gemini + SSE/NDJSON parser
+  tools.rs          # Agent tool definitions & local execution
+  rag.rs            # Document indexing & semantic search (SQLite)
+  main.rs           # Agent loop, Tauri commands, streaming channel
+src/
+  components/       # ChatMessage, ProviderSettings, UI primitives
+  services/         # Frontend bridges to Tauri commands
+  types/            # Shared types (mirror Rust structs)
+PLUGINS.md          # Plugin system documentation
+```
 
 ---
 
 ## 📄 License / Лицензия
 
-MIT License. Сделано с любовью к Open Source и локальному AI. 🦀💎
+MIT License. Сделано с любовью к Open Source. 🦀💎

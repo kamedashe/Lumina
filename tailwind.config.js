@@ -9,16 +9,24 @@ export default {
     theme: {
         extend: {
             colors: {
-                lumina: {
-                    bg: '#050505',
-                    surface: '#121212',
-                    accent: '#8B5CF6',
-                    glow: '#A78BFA',
-                }
+                // Значения берутся из CSS-переменных → работает и в светлой, и в тёмной теме.
+                bg: 'rgb(var(--bg) / <alpha-value>)',
+                surface: 'rgb(var(--surface) / <alpha-value>)',
+                elevated: 'rgb(var(--elevated) / <alpha-value>)',
+                border: 'rgb(var(--border) / <alpha-value>)',
+                fg: 'rgb(var(--fg) / <alpha-value>)',
+                muted: 'rgb(var(--muted) / <alpha-value>)',
+                subtle: 'rgb(var(--subtle) / <alpha-value>)',
+                accent: 'rgb(var(--accent) / <alpha-value>)',
+                'accent-fg': 'rgb(var(--accent-fg) / <alpha-value>)',
             },
-            animation: {
-                'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-            }
+            fontFamily: {
+                sans: ['Inter', 'system-ui', 'sans-serif'],
+                mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+            },
+            borderRadius: {
+                xl: '0.75rem',
+            },
         },
     },
     plugins: [],

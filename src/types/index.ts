@@ -1,15 +1,61 @@
+export type Role = 'system' | 'user' | 'assistant' | 'tool';
+
+export type ToolCall = {
+    id: string;
+    name: string;
+    arguments: string;
+};
+
+export type ToolInvocation = {
+    id: string;
+    name: string;
+    content: string;
+    isError: boolean;
+};
+
 export type Message = {
     role: 'user' | 'assistant';
-    content: string
+    content: string;
+    /** Инструменты, выполненные во время генерации этого ответа (для отображения). */
+    tools?: ToolInvocation[];
+};
+
+/** Формат сообщения, который уходит в бэкенд (совпадает с Rust ChatMessage). */
+export type WireMessage = {
+    role: Role;
+    content: string;
+    tool_calls?: ToolCall[];
+    tool_call_id?: string;
+    tool_name?: string;
 };
 
 export type ChatSession = {
     id: number;
     title: string;
     date: number;
-    messages: Message[]
+    messages: Message[];
+    /** Провайдер, которым велась беседа. */
+    providerId?: string;
 };
 
-export type OllamaModel = {
-    name: string;
+export type ProviderKind = 'ollama' | 'open_ai' | 'anthropic' | 'gemini';
+
+export type ProviderConfig = {
+    id: string;
+    kind: ProviderKind;
+    label: string;
+    base_url: string;
+    api_key?: string;
+    model: string;
+    temperature: number;
+    embedding_model?: string;
 };
+
+/** События потока из бэкенда (совпадает с Rust StreamEvent). */
+export type StreamEvent =
+    | { type: 'text'; delta: string }
+    | { type: 'tool_call_start'; id: string; name: string }
+    | { type: 'tool_result'; id: string; name: string; content: string; is_error: boolean }
+    | { type: 'status'; message: string }
+    | { type: 'done'; stop_reason: string }
+    | { type: 'error'; message: string };
