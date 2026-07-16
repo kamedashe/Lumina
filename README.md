@@ -1,54 +1,47 @@
 # Lumina 💎 — Agentic Desktop Assistant
 
-**Lumina** — агентный AI-ассистент для рабочего стола: подключается к любому LLM-провайдеру (локальному или облачному), стримит ответы в реальном времени и умеет работать с вашей системой через нативный tool-calling — файлы, процессы, семантический поиск по документам.
-
-**Lumina** is an agentic desktop AI assistant: connect any LLM provider (local or cloud), stream responses in real time, and let the model act on your system through native tool-calling — files, processes, and semantic search over your documents.
+**Lumina** is an agentic AI assistant for your desktop. Connect any LLM provider — local or cloud — stream responses in real time, and let the model act on your system through native tool-calling: files, processes, and semantic search over your own documents.
 
 ---
 
-## ✨ Features / Возможности
+## ✨ Features
 
-### 🌐 Multi-Provider / Мультипровайдерность
-Один интерфейс — любые модели. Ключи хранятся локально, все запросы идут через Rust-бэкенд:
-- **Ollama** — локальные модели (Llama 3, Mistral, Gemma), без ключа
-- **OpenAI-совместимые** — OpenAI, OpenRouter, Groq, LM Studio, vLLM (любой `base_url`)
-- **Anthropic** — Claude через Messages API
-- **Google Gemini** — generateContent + function calling
+### 🌐 Multi-Provider
+One interface, any model. API keys are stored locally and every request goes through the Rust backend — nothing is proxied through a third party.
 
-One UI — any model. API keys never leave your machine; every request goes through the Rust backend:
-- **Ollama** — local models, no key required
-- **OpenAI-compatible** — OpenAI, OpenRouter, Groq, LM Studio, vLLM (any `base_url`)
-- **Anthropic** (Claude) and **Google Gemini**
+- **Ollama** — local models (Llama 3, Mistral, Gemma), no API key needed
+- **OpenAI-compatible** — OpenAI, OpenRouter, Groq, LM Studio, vLLM, or any endpoint with a custom `base_url`
+- **Anthropic** — Claude via the Messages API
+- **Google Gemini** — `generateContent` with function calling
 
-### 🤖 Agentic Tool-Calling / Агентный цикл
-Настоящий tool-calling через нативные API провайдеров (не парсинг текста): модель запрашивает инструмент → Rust выполняет его → результат возвращается модели → цикл продолжается до финального ответа. Инструменты:
-- `list_files` / `read_file` / `write_file` — работа с файловой системой
-- `get_current_dir`, `list_processes` — системная осведомлённость
-- `search_documents` — семантический поиск по прикреплённым документам
+### 🤖 Agentic Tool-Calling
+A real agent loop built on each provider's native tool-calling API — not text parsing. The model requests a tool → Rust executes it → the result is fed back to the model → the loop continues until a final answer. Every tool call appears in the chat as an expandable badge showing the raw result.
 
-Real agentic loop via native provider tool-calling APIs (no text parsing): the model requests a tool → Rust executes it → the result goes back to the model → the loop continues until a final answer. Tool results are shown as expandable badges in the chat.
+Available tools:
 
-### 📚 Local RAG / Локальный RAG
-- Индексация PDF, TXT, MD, JSON и исходного кода (чанки + эмбеддинги в SQLite)
-- Поиск ограничивается прикреплёнными файлами; переиндексация не плодит дубликаты
-- Эмбеддинги через провайдера (для Claude — автоматический фолбэк на локальный Ollama)
+| Tool | Purpose |
+|---|---|
+| `list_files` | List files and folders in a directory |
+| `read_file` | Read the contents of a text file |
+| `write_file` | Create or overwrite a file |
+| `get_current_dir` | Get the current working directory |
+| `list_processes` | List running system processes |
+| `search_documents` | Semantic search over attached documents |
 
-Chunked embeddings stored in local SQLite; search is scoped to attached files; re-indexing replaces stale chunks. Embeddings go through your provider (with an automatic local-Ollama fallback for Anthropic).
+### 📚 Local RAG
+- Indexes PDF, TXT, MD, JSON, and source code as chunked embeddings in a local SQLite store
+- Search is scoped to the files you attach, so context stays relevant
+- Re-indexing replaces stale chunks instead of duplicating them
+- Embeddings run through your provider, with an automatic local-Ollama fallback for Anthropic (which has no embeddings endpoint)
 
-### ⚡ Streaming UI
-Ответы стримятся токен за токеном через Tauri IPC Channel (SSE/NDJSON-парсинг на стороне Rust) — с индикатором статуса агента и мигающим курсором.
+### ⚡ Streaming
+Responses stream token by token over a Tauri IPC Channel, with SSE and NDJSON parsed on the Rust side. Agent status indicators show what the model is doing while it works.
 
-Token-by-token streaming over a Tauri IPC Channel (SSE/NDJSON parsed in Rust), with agent status indicators.
-
-### 🔌 Plugin System / Плагины
-Безопасная песочница **QuickJS** — выполнение JavaScript внутри Rust-окружения.
-
-Secure **QuickJS** sandbox for running JavaScript inside the Rust environment.
+### 🔌 Plugin System
+A secure **QuickJS** sandbox for running JavaScript isolated inside the Rust environment. See [PLUGINS.md](PLUGINS.md).
 
 ### 🎨 Modern UI
-Сдержанный современный интерфейс: светлая и тёмная темы, системный Acrylic-эффект, аккуратная типографика Markdown с блоками кода и таблицами.
-
-Clean, restrained UI: light & dark themes, native Acrylic effect, proper Markdown typography with code blocks and tables.
+A clean, restrained interface: light and dark themes driven by CSS variables, native Acrylic backdrop, and proper Markdown typography with code blocks and tables.
 
 ---
 
@@ -56,23 +49,25 @@ Clean, restrained UI: light & dark themes, native Acrylic effect, proper Markdow
 
 - **Backend:** [Rust](https://www.rust-lang.org/) + [Tauri v2](https://tauri.app/) — provider clients, agent loop, RAG, streaming
 - **Frontend:** [React 19](https://react.dev/) + [TypeScript](https://www.typescriptlang.org/) + [Vite 6](https://vitejs.dev/)
-- **Database:** [rusqlite (SQLite)](https://github.com/rusqlite/rusqlite) — RAG vector store
+- **Database:** [rusqlite (SQLite)](https://github.com/rusqlite/rusqlite) — local vector store for RAG
 - **JS Engine:** [rquickjs (QuickJS)](https://github.com/DelSkayn/rquickjs) — plugin sandbox
-- **Styling:** [Tailwind CSS](https://tailwindcss.com/) + CSS variables (theming)
+- **Styling:** [Tailwind CSS](https://tailwindcss.com/) with CSS-variable theming
 
 ---
 
-## 🚀 Quick Start / Быстрый старт
+## 🚀 Quick Start
 
-### Requirements / Требования
+### Requirements
+
 1. **Node.js** (LTS)
-2. **Rust** & Cargo
-3. Хотя бы один провайдер / at least one provider:
-   - локально / local: [Ollama](https://ollama.com/) или LM Studio
-   - или облачный API-ключ / or a cloud API key: OpenAI, OpenRouter, Groq, Anthropic, Gemini
-4. Для RAG с локальными эмбеддингами / for RAG with local embeddings: `ollama pull nomic-embed-text`
+2. **Rust** and Cargo
+3. At least one provider:
+   - Local: [Ollama](https://ollama.com/) or LM Studio
+   - Cloud: an API key for OpenAI, OpenRouter, Groq, Anthropic, or Gemini
+4. For RAG with local embeddings: `ollama pull nomic-embed-text`
 
-### Installation / Установка
+### Installation
+
 ```bash
 git clone https://github.com/kamedashe/Lumina.git
 cd Lumina
@@ -82,29 +77,27 @@ npm install
 npm run tauri dev
 ```
 
-При первом запуске активен локальный Ollama. Облачные провайдеры добавляются в настройках (⚙): выберите пресет, вставьте ключ, нажмите «Модели» для проверки связи.
-
-On first launch the local Ollama preset is active. Add cloud providers in Settings (⚙): pick a preset, paste your key, hit "Models" to verify the connection.
+The local Ollama preset is active on first launch. To add a cloud provider, open Settings (⚙), pick a preset, paste your API key, and click **Models** to verify the connection and load the available model list.
 
 ---
 
-## 📄 Project Structure / Структура проекта
+## 📄 Project Structure
 
 ```
 src-tauri/src/
   providers/        # LLM clients: ollama, openai, anthropic, gemini + SSE/NDJSON parser
-  tools.rs          # Agent tool definitions & local execution
-  rag.rs            # Document indexing & semantic search (SQLite)
+  tools.rs          # Agent tool definitions and local execution
+  rag.rs            # Document indexing and semantic search (SQLite)
   main.rs           # Agent loop, Tauri commands, streaming channel
 src/
   components/       # ChatMessage, ProviderSettings, UI primitives
   services/         # Frontend bridges to Tauri commands
-  types/            # Shared types (mirror Rust structs)
+  types/            # Shared types mirroring the Rust structs
 PLUGINS.md          # Plugin system documentation
 ```
 
 ---
 
-## 📄 License / Лицензия
+## 📄 License
 
-MIT License. Сделано с любовью к Open Source. 🦀💎
+MIT License. Built with love for open source. 🦀💎
