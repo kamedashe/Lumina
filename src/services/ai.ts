@@ -9,6 +9,7 @@ export const aiService = {
     async runAgent(params: {
         config: ProviderConfig;
         store: VectorStoreConfig;
+        embeddingProvider?: ProviderConfig;
         system: string;
         messages: WireMessage[];
         attachments: string[];
@@ -20,6 +21,7 @@ export const aiService = {
         await invoke('run_agent', {
             config: params.config,
             store: params.store,
+            embeddingProvider: params.embeddingProvider ?? null,
             system: params.system,
             messages: params.messages,
             attachments: params.attachments,

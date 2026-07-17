@@ -11,7 +11,7 @@ import { ChatMessage } from './src/components/ChatMessage.tsx';
 import { ProviderSettings } from './src/components/ProviderSettings.tsx';
 import { aiService } from './src/services/ai.ts';
 import { pluginService } from './src/services/plugins.ts';
-import { SYSTEM_PROMPT, defaultProvider } from './src/constants.ts';
+import { SYSTEM_PROMPT, defaultProvider, resolveEmbeddingProvider } from './src/constants.ts';
 import { Message, ChatSession, ProviderConfig, WireMessage, ToolInvocation, VectorStoreConfig } from './src/types/index.ts';
 
 type Theme = 'light' | 'dark';
@@ -171,6 +171,7 @@ const App: React.FC = () => {
                 await aiService.runAgent({
                     config: activeProvider,
                     store,
+                    embeddingProvider: resolveEmbeddingProvider(activeProvider, providers),
                     system: SYSTEM_PROMPT,
                     messages: toWire(baseMessages),
                     attachments: sentAttachments,
@@ -227,7 +228,7 @@ const App: React.FC = () => {
                 if (isNew) inputRef.current?.focus();
             }
         },
-        [input, attachments, isLoading, messages, currentChatId, activeProvider, store],
+        [input, attachments, isLoading, messages, currentChatId, activeProvider, providers, store],
     );
 
     const startNewChat = () => {

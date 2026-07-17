@@ -89,6 +89,27 @@ export function makeProviderId(): string {
     return `p_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
+/**
+ * Чем считать эмбеддинги для RAG. У Anthropic эндпоинта эмбеддингов нет вообще,
+ * поэтому для Claude берём настроенного пользователем Ollama — с его base_url,
+ * а не с захардкоженного localhost. Для остальных провайдеров undefined:
+ * бэкенд посчитает эмбеддинги самим активным провайдером.
+ */
+export function resolveEmbeddingProvider(
+    active: ProviderConfig,
+    all: ProviderConfig[],
+): ProviderConfig | undefined {
+    if (active.kind !== 'anthropic') return undefined;
+
+    const ollama = all.find((p) => p.kind === 'ollama');
+    if (!ollama) return undefined;
+
+    return {
+        ...ollama,
+        embedding_model: ollama.embedding_model || 'nomic-embed-text',
+    };
+}
+
 /** Провайдер по умолчанию — локальный Ollama, чтобы приложение работало из коробки. */
 export function defaultProvider(): ProviderConfig {
     const preset = PROVIDER_PRESETS.ollama;

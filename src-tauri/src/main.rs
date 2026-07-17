@@ -27,11 +27,15 @@ fn http_client() -> reqwest::Client {
 
 /// Основная команда: прогоняет агентный цикл и стримит события во фронтенд
 /// через Channel. История ведётся на стороне фронтенда и передаётся целиком.
+///
+/// `embedding_provider` — чем считать эмбеддинги, если активный провайдер их
+/// не умеет. Фронтенд подставляет сюда настроенного пользователем Ollama.
 #[tauri::command]
 async fn run_agent(
     app: tauri::AppHandle,
     config: ProviderConfig,
     store: VectorStoreConfig,
+    embedding_provider: Option<ProviderConfig>,
     system: String,
     messages: Vec<ChatMessage>,
     attachments: Vec<String>,
@@ -48,7 +52,7 @@ async fn run_agent(
 
         // Для эмбеддингов у Anthropic своего эндпоинта нет — при необходимости
         // используем локальный Ollama как фолбэк.
-        let embed_config = embedding_config(&config);
+        let embed_config = embedding_config(&config, &embedding_provider);
 
         if let Err(e) =
             rag::process_documents(&app, &client, &embed_config, &store, &attachments).await
@@ -116,7 +120,7 @@ async fn run_agent(
                         .and_then(Value::as_str)
                         .unwrap_or("")
                         .to_string();
-                    let embed_config = embedding_config(&config);
+                    let embed_config = embedding_config(&config, &embedding_provider);
                     match rag::search_documents(&app, &client, &embed_config, &store, &query, &[])
                         .await
                     {
@@ -165,11 +169,22 @@ async fn run_agent(
     Ok(())
 }
 
-/// Провайдер для эмбеддингов. У Anthropic эндпоинта нет — откатываемся на
-/// локальный Ollama с дефолтной моделью nomic-embed-text.
-fn embedding_config(config: &ProviderConfig) -> ProviderConfig {
+/// Выбирает, чем считать эмбеддинги.
+///
+/// У Anthropic эндпоинта эмбеддингов нет вообще, поэтому для него нужен другой
+/// провайдер. Приоритет — тот, что явно передал фронтенд (настроенный
+/// пользователем Ollama с его base_url); localhost остаётся лишь последним
+/// рубежом, когда ни одного подходящего провайдера не настроено.
+fn embedding_config(
+    config: &ProviderConfig,
+    explicit: &Option<ProviderConfig>,
+) -> ProviderConfig {
+    if let Some(provider) = explicit {
+        return provider.clone();
+    }
+
     if matches!(config.kind, providers::ProviderKind::Anthropic) {
-        ProviderConfig {
+        return ProviderConfig {
             id: "ollama-embed-fallback".into(),
             kind: providers::ProviderKind::Ollama,
             label: "Ollama (эмбеддинги)".into(),
@@ -178,10 +193,10 @@ fn embedding_config(config: &ProviderConfig) -> ProviderConfig {
             model: "nomic-embed-text".into(),
             temperature: 0.0,
             embedding_model: Some("nomic-embed-text".into()),
-        }
-    } else {
-        config.clone()
+        };
     }
+
+    config.clone()
 }
 
 #[tauri::command]

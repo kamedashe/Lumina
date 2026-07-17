@@ -208,7 +208,18 @@ pub async fn embed(
         .json(&json!({ "model": model, "prompt": text }))
         .send()
         .await
-        .map_err(|e| format!("Ошибка эмбеддинга (Ollama): {}", e))?;
+        // Сюда попадаем, когда до Ollama вообще не достучались. Голая ошибка
+        // reqwest («error sending request for url…») пользователю ничего не
+        // говорит — подсказываем, что именно проверить.
+        .map_err(|_| {
+            format!(
+                "Ollama не отвечает на {}. Запустите его (команда `ollama serve` \
+                 или приложение Ollama) и убедитесь, что установлена модель \
+                 эмбеддингов: ollama pull {}",
+                config.base(),
+                model
+            )
+        })?;
 
     if !response.status().is_success() {
         let detail = sse::error_from_response(response, "Ollama").await;
