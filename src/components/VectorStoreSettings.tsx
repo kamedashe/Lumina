@@ -1,19 +1,40 @@
 import React, { useState } from 'react';
-import { HardDrive, Cloud, Zap, CheckCircle2, XCircle, RefreshCw, KeyRound, ShieldAlert } from 'lucide-react';
+import { HardDrive, Cloud, Zap, Workflow, CheckCircle2, XCircle, RefreshCw, KeyRound, ShieldAlert } from 'lucide-react';
 import { VectorStoreConfig, VectorStoreKind } from '../types';
 import { aiService } from '../services/ai';
 
 type Props = {
     store: VectorStoreConfig;
     onChange: (store: VectorStoreConfig) => void;
+    useGraph: boolean;
+    onUseGraphChange: (value: boolean) => void;
 };
 
 type TestState = 'idle' | 'testing' | 'ok' | 'fail';
 
-export const VectorStoreSettings: React.FC<Props> = ({ store, onChange }) => {
+export const VectorStoreSettings: React.FC<Props> = ({
+    store,
+    onChange,
+    useGraph,
+    onUseGraphChange,
+}) => {
     const [testState, setTestState] = useState<TestState>('idle');
     const [testMsg, setTestMsg] = useState('');
     const [showKey, setShowKey] = useState(false);
+    const [graphState, setGraphState] = useState<TestState>('idle');
+    const [graphMsg, setGraphMsg] = useState('');
+
+    const testGraph = async () => {
+        setGraphState('testing');
+        setGraphMsg('');
+        try {
+            setGraphMsg(await aiService.testLangGraph());
+            setGraphState('ok');
+        } catch (e) {
+            setGraphMsg(String(e));
+            setGraphState('fail');
+        }
+    };
 
     const update = (patch: Partial<VectorStoreConfig>) => onChange({ ...store, ...patch });
 
@@ -157,6 +178,66 @@ export const VectorStoreSettings: React.FC<Props> = ({ store, onChange }) => {
                     <span className="break-words">{testMsg}</span>
                 </div>
             )}
+
+            {/* --- Как ищем: одиночный запрос или граф --- */}
+            <div className="pt-5 border-t border-border space-y-3">
+                <button
+                    onClick={() => onUseGraphChange(!useGraph)}
+                    className="w-full flex items-start gap-3 text-left group"
+                >
+                    <span
+                        className={`mt-0.5 w-9 h-5 rounded-full shrink-0 transition-colors relative ${
+                            useGraph ? 'bg-accent' : 'bg-border'
+                        }`}
+                    >
+                        <span
+                            className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${
+                                useGraph ? 'left-[18px]' : 'left-0.5'
+                            }`}
+                        />
+                    </span>
+                    <span className="flex-1">
+                        <span className="flex items-center gap-1.5 text-sm font-medium">
+                            <Workflow size={14} className={useGraph ? 'text-accent' : 'text-muted'} />
+                            Поиск через LangGraph
+                        </span>
+                        <span className="block text-[11px] text-subtle mt-0.5 leading-relaxed">
+                            Граф переформулирует запрос, оценивает найденное на релевантность и при
+                            нехватке материала ищет повторно с другой формулировкой. Качество выше,
+                            но добавляется 2–3 вызова модели на поиск. Требует Python с LangGraph;
+                            при недоступности откатывается на обычный поиск.
+                        </span>
+                    </span>
+                </button>
+
+                {useGraph && (
+                    <>
+                        <button
+                            onClick={testGraph}
+                            disabled={graphState === 'testing'}
+                            className="px-3 py-2 rounded-lg border border-border text-muted hover:text-fg hover:bg-elevated flex items-center gap-1.5 text-xs transition-colors disabled:opacity-50"
+                        >
+                            <RefreshCw size={13} className={graphState === 'testing' ? 'animate-spin' : ''} />
+                            Проверить граф
+                        </button>
+
+                        {graphState !== 'idle' && graphState !== 'testing' && (
+                            <div
+                                className={`flex items-start gap-2 text-xs ${
+                                    graphState === 'ok' ? 'text-accent' : 'text-red-400'
+                                }`}
+                            >
+                                {graphState === 'ok' ? (
+                                    <CheckCircle2 size={14} className="shrink-0 mt-0.5" />
+                                ) : (
+                                    <XCircle size={14} className="shrink-0 mt-0.5" />
+                                )}
+                                <span className="break-words">{graphMsg}</span>
+                            </div>
+                        )}
+                    </>
+                )}
+            </div>
         </div>
     );
 };

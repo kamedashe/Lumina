@@ -11,8 +11,10 @@ type Props = {
     providers: ProviderConfig[];
     activeId: string;
     store: VectorStoreConfig;
+    useGraph: boolean;
     onChange: (providers: ProviderConfig[]) => void;
     onStoreChange: (store: VectorStoreConfig) => void;
+    onUseGraphChange: (value: boolean) => void;
     onSelect: (id: string) => void;
     onClose: () => void;
 };
@@ -21,8 +23,10 @@ export const ProviderSettings: React.FC<Props> = ({
     providers,
     activeId,
     store,
+    useGraph,
     onChange,
     onStoreChange,
+    onUseGraphChange,
     onSelect,
     onClose,
 }) => {
@@ -172,7 +176,12 @@ export const ProviderSettings: React.FC<Props> = ({
 
                     {view === 'store' ? (
                         <div className="flex-1 overflow-y-auto custom-scrollbar p-5">
-                            <VectorStoreSettings store={store} onChange={onStoreChange} />
+                            <VectorStoreSettings
+                                store={store}
+                                onChange={onStoreChange}
+                                useGraph={useGraph}
+                                onUseGraphChange={onUseGraphChange}
+                            />
                         </div>
                     ) : !editing ? (
                         <div className="flex-1 flex items-center justify-center text-sm text-subtle">

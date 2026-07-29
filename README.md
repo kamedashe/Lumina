@@ -43,6 +43,25 @@ Three interchangeable backends, selectable in Settings → Storage:
 
 > **Pinecone note:** serverless indexes don't support delete-by-metadata-filter, so chunk IDs are structured as `{path_hash}#{chunk_index}` and re-indexing deletes via list-by-prefix. Index dimension must match your embedding model (`nomic-embed-text` = 768, `text-embedding-3-small` = 1536); the app checks this and reports a mismatch instead of letting Pinecone return an opaque 400.
 
+### 🕸️ LangGraph Search (optional)
+Single-shot retrieval embeds the raw conversational question — noise words and all — and takes whatever cosine similarity returns. Enabling **Settings → Storage → LangGraph search** routes document search through a corrective-RAG graph instead:
+
+```
+START → plan → retrieve → grade → (enough?) → compose → END
+                  ↑                    │
+                  └───────  refine  ←──┘
+```
+
+`plan` rewrites the question into a focused search query, `grade` filters out chunks that scored well on cosine but aren't actually relevant, and if too little survives, `refine` reformulates and the graph loops back for a second pass. State uses an `operator.add` reducer so results accumulate across passes rather than overwrite.
+
+**The split that makes this work:** the graph does orchestration only — every piece of I/O stays in Rust. When a node needs retrieval or an LLM call it emits a callback over stdio and the host answers. So the Python side holds no API keys, no provider clients, and no knowledge of which of the three vector backends is active; it inherits all of them for free.
+
+Costs 2–3 extra LLM calls per search, so it's **off by default**. Requires Python with LangGraph — any failure (no Python, missing dependency, timeout) falls back to direct vector search rather than breaking the turn.
+
+```bash
+pip install -r sidecar/requirements.txt
+```
+
 ### ⚡ Streaming
 Responses stream token by token over a Tauri IPC Channel, with SSE and NDJSON parsed on the Rust side. Agent status indicators show what the model is doing while it works.
 
@@ -58,6 +77,7 @@ A clean, restrained interface: light and dark themes driven by CSS variables, na
 
 - **Backend:** [Rust](https://www.rust-lang.org/) + [Tauri v2](https://tauri.app/) — provider clients, agent loop, RAG, streaming
 - **Frontend:** [React 19](https://react.dev/) + [TypeScript](https://www.typescriptlang.org/) + [Vite 6](https://vitejs.dev/)
+- **Agent orchestration (optional):** [LangGraph](https://github.com/langchain-ai/langgraph) in a Python sidecar — corrective RAG with query rewriting and relevance grading
 - **Vector store:** [sqlite-vec](https://github.com/asg017/sqlite-vec) / [rusqlite (SQLite)](https://github.com/rusqlite/rusqlite) locally, or [Pinecone](https://www.pinecone.io/) serverless in the cloud
 - **JS Engine:** [rquickjs (QuickJS)](https://github.com/DelSkayn/rquickjs) — plugin sandbox
 - **Styling:** [Tailwind CSS](https://tailwindcss.com/) with CSS-variable theming
@@ -74,6 +94,7 @@ A clean, restrained interface: light and dark themes driven by CSS variables, na
    - Local: [Ollama](https://ollama.com/) or LM Studio
    - Cloud: an API key for OpenAI, OpenRouter, Groq, Anthropic, or Gemini
 4. For RAG with local embeddings: `ollama pull nomic-embed-text`
+5. Optional, for LangGraph search: Python 3.10+ and `pip install -r sidecar/requirements.txt`
 
 ### Installation
 
@@ -96,6 +117,7 @@ The local Ollama preset is active on first launch. To add a cloud provider, open
 src-tauri/src/
   providers/        # LLM clients: ollama, openai, anthropic, gemini + SSE/NDJSON parser
   vector/           # Vector store backends: sqlite_vec, sqlite (local), pinecone (cloud)
+  sidecar.rs        # Bridge to the LangGraph process; serves its retrieve/llm callbacks
   tools.rs          # Agent tool definitions and local execution
   rag.rs            # Text extraction, chunking, search orchestration
   main.rs           # Agent loop, Tauri commands, streaming channel
@@ -103,6 +125,10 @@ src/
   components/       # ChatMessage, ProviderSettings, UI primitives
   services/         # Frontend bridges to Tauri commands
   types/            # Shared types mirroring the Rust structs
+sidecar/
+  graph.py          # LangGraph corrective-RAG graph (orchestration only)
+  test_graph.py     # Graph logic against a stubbed host
+  test_protocol.py  # Real subprocess over stdio, as Rust drives it
 PLUGINS.md          # Plugin system documentation
 ```
 

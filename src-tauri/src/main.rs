@@ -2,6 +2,7 @@
 
 mod providers;
 mod rag;
+mod sidecar;
 mod tools;
 mod vector;
 
@@ -36,6 +37,7 @@ async fn run_agent(
     config: ProviderConfig,
     store: VectorStoreConfig,
     embedding_provider: Option<ProviderConfig>,
+    use_graph: bool,
     system: String,
     messages: Vec<ChatMessage>,
     attachments: Vec<String>,
@@ -121,15 +123,18 @@ async fn run_agent(
                         .unwrap_or("")
                         .to_string();
                     let embed_config = embedding_config(&config, &embedding_provider);
-                    match rag::search_documents(&app, &client, &embed_config, &store, &query, &[])
-                        .await
-                    {
-                        Ok(ctx) if ctx.trim().is_empty() => {
-                            ("Ничего не найдено в проиндексированных документах.".into(), false)
-                        }
-                        Ok(ctx) => (ctx, false),
-                        Err(e) => (e, true),
-                    }
+
+                    search_documents_tool(
+                        &app,
+                        &client,
+                        &config,
+                        &embed_config,
+                        &store,
+                        use_graph,
+                        &query,
+                        &on_event,
+                    )
+                    .await
                 } else {
                     (format!("Неизвестный инструмент: {}", call.name), true)
                 };
@@ -167,6 +172,70 @@ async fn run_agent(
     }
 
     Ok(())
+}
+
+/// Поиск по документам для агента.
+///
+/// Когда включён LangGraph-режим, поиск идёт через граф: он переформулирует
+/// запрос, оценивает найденное и при нехватке материала заходит на второй круг.
+/// Граф — улучшение, а не обязательное звено: любой его сбой (нет Python, нет
+/// зависимостей, таймаут) откатывает на прямой векторный поиск, а не роняет ход.
+#[allow(clippy::too_many_arguments)]
+async fn search_documents_tool(
+    app: &tauri::AppHandle,
+    client: &reqwest::Client,
+    provider: &ProviderConfig,
+    embed_provider: &ProviderConfig,
+    store: &VectorStoreConfig,
+    use_graph: bool,
+    query: &str,
+    on_event: &Channel<StreamEvent>,
+) -> (String, bool) {
+    if use_graph {
+        let _ = on_event.send(StreamEvent::Status {
+            message: "LangGraph: уточняю запрос…".into(),
+        });
+
+        let ctx = sidecar::SidecarCtx {
+            app,
+            client,
+            provider,
+            embed_provider,
+            store,
+        };
+
+        match sidecar::search(&ctx, query, &[]).await {
+            Ok(result) => {
+                for step in &result.trace {
+                    let _ = on_event.send(StreamEvent::Status {
+                        message: format!("LangGraph · {}", step),
+                    });
+                }
+                if result.context.trim().is_empty() {
+                    return (
+                        "Граф не нашёл релевантных фрагментов в документах.".into(),
+                        false,
+                    );
+                }
+                return (result.context, false);
+            }
+            Err(e) => {
+                // Сообщаем и продолжаем обычным поиском — пользователь получит ответ.
+                let _ = on_event.send(StreamEvent::Status {
+                    message: format!("LangGraph недоступен ({}), обычный поиск", e),
+                });
+            }
+        }
+    }
+
+    match rag::search_documents(app, client, embed_provider, store, query, &[]).await {
+        Ok(ctx) if ctx.trim().is_empty() => (
+            "Ничего не найдено в проиндексированных документах.".into(),
+            false,
+        ),
+        Ok(ctx) => (ctx, false),
+        Err(e) => (e, true),
+    }
 }
 
 /// Выбирает, чем считать эмбеддинги.
@@ -225,6 +294,13 @@ async fn test_vector_store(app: tauri::AppHandle, store: VectorStoreConfig) -> R
     vector::health(&ctx).await
 }
 
+/// Проверяет, поднимается ли LangGraph-sidecar: есть ли Python, скрипт и
+/// установлены ли зависимости. Возвращает версию LangGraph.
+#[tauri::command]
+async fn test_langgraph() -> Result<String, String> {
+    sidecar::health().await
+}
+
 #[tauri::command]
 async fn run_plugin(code: String) -> Result<String, String> {
     let rt = Runtime::new().map_err(|e: rquickjs::Error| e.to_string())?;
@@ -277,6 +353,7 @@ fn main() {
             list_models,
             test_provider,
             test_vector_store,
+            test_langgraph,
             run_plugin
         ])
         .run(tauri::generate_context!())

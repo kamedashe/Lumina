@@ -10,6 +10,7 @@ export const aiService = {
         config: ProviderConfig;
         store: VectorStoreConfig;
         embeddingProvider?: ProviderConfig;
+        useGraph: boolean;
         system: string;
         messages: WireMessage[];
         attachments: string[];
@@ -22,6 +23,7 @@ export const aiService = {
             config: params.config,
             store: params.store,
             embeddingProvider: params.embeddingProvider ?? null,
+            useGraph: params.useGraph,
             system: params.system,
             messages: params.messages,
             attachments: params.attachments,
@@ -45,5 +47,10 @@ export const aiService = {
     /** Проверка векторного хранилища. Возвращает описание состояния индекса. */
     async testVectorStore(store: VectorStoreConfig): Promise<string> {
         return await invoke<string>('test_vector_store', { store });
+    },
+
+    /** Проверка LangGraph-sidecar: Python, скрипт графа и зависимости. */
+    async testLangGraph(): Promise<string> {
+        return await invoke<string>('test_langgraph');
     },
 };

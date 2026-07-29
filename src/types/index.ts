@@ -61,6 +61,15 @@ export type VectorStoreConfig = {
     namespace?: string;
 };
 
+/**
+ * Прогонять ли поиск по документам через LangGraph-граф вместо одиночного
+ * векторного запроса. Хранится отдельно от VectorStoreConfig: это про то, как
+ * ищем, а не про то, где лежат векторы.
+ */
+export type SearchMode = {
+    useGraph: boolean;
+};
+
 /** События потока из бэкенда (совпадает с Rust StreamEvent). */
 export type StreamEvent =
     | { type: 'text'; delta: string }

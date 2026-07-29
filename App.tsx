@@ -28,6 +28,7 @@ const App: React.FC = () => {
     const [providers, setProviders] = useState<ProviderConfig[]>([]);
     const [activeProviderId, setActiveProviderId] = useState<string>('');
     const [store, setStore] = useState<VectorStoreConfig>({ kind: 'sqlite_vec' });
+    const [useGraph, setUseGraph] = useState(false);
 
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [showSettings, setShowSettings] = useState(false);
@@ -65,6 +66,8 @@ const App: React.FC = () => {
         const savedActive = localStorage.getItem('lumina_active_provider');
         setActiveProviderId(savedActive && loaded.some((p) => p.id === savedActive) ? savedActive : loaded[0].id);
 
+        setUseGraph(localStorage.getItem('lumina_use_graph') === 'true');
+
         const savedStore = localStorage.getItem('lumina_vector_store');
         if (savedStore) {
             try {
@@ -89,6 +92,10 @@ const App: React.FC = () => {
     useEffect(() => {
         localStorage.setItem('lumina_vector_store', JSON.stringify(store));
     }, [store]);
+
+    useEffect(() => {
+        localStorage.setItem('lumina_use_graph', String(useGraph));
+    }, [useGraph]);
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -172,6 +179,7 @@ const App: React.FC = () => {
                     config: activeProvider,
                     store,
                     embeddingProvider: resolveEmbeddingProvider(activeProvider, providers),
+                    useGraph,
                     system: SYSTEM_PROMPT,
                     messages: toWire(baseMessages),
                     attachments: sentAttachments,
@@ -228,7 +236,7 @@ const App: React.FC = () => {
                 if (isNew) inputRef.current?.focus();
             }
         },
-        [input, attachments, isLoading, messages, currentChatId, activeProvider, providers, store],
+        [input, attachments, isLoading, messages, currentChatId, activeProvider, providers, store, useGraph],
     );
 
     const startNewChat = () => {
@@ -487,8 +495,10 @@ const App: React.FC = () => {
                     providers={providers}
                     activeId={activeProviderId}
                     store={store}
+                    useGraph={useGraph}
                     onChange={setProviders}
                     onStoreChange={setStore}
+                    onUseGraphChange={setUseGraph}
                     onSelect={setActiveProviderId}
                     onClose={() => setShowSettings(false)}
                 />

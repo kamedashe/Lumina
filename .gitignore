@@ -17,3 +17,8 @@ test.txt
 .vscode
 .idea
 *.swp
+
+# Python sidecar
+__pycache__/
+*.pyc
+.pytest_cache/
