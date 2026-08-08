@@ -66,20 +66,32 @@ pub struct Chunk {
     pub path: String,
     /// Порядковый номер фрагмента внутри файла.
     pub index: usize,
+    /// Границы фрагмента в СИМВОЛАХ исходного текста (не в байтах).
+    /// Символы, а не байты, потому что разметка golden set ищет цитату
+    /// питоновским `str.find()`, а он тоже считает кодовые точки. На
+    /// кириллице байтовые смещения разошлись бы с ним вдвое.
+    pub char_start: usize,
+    pub char_end: usize,
     pub content: String,
     pub embedding: Vec<f32>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize)]
 pub struct SearchHit {
-    pub content: String,
-    #[allow(dead_code)]
+    /// `{path_key}#{index}` — одна схема идентификаторов на все три бэкенда.
+    pub chunk_id: String,
     pub path: String,
+    pub char_start: usize,
+    pub char_end: usize,
     pub score: f32,
+    pub content: String,
 }
 
+/// Директория данных передаётся путём, а не `AppHandle`, чтобы весь модуль
+/// не зависел от запущенного Tauri: это позволяет и headless-режим для
+/// eval-харнеса, и интеграционные тесты в CI без GUI.
 pub struct StoreCtx<'a> {
-    pub app: &'a tauri::AppHandle,
+    pub data_dir: &'a std::path::Path,
     pub client: &'a reqwest::Client,
     pub config: &'a VectorStoreConfig,
 }

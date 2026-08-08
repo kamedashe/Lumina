@@ -1,0 +1,21 @@
+{
+  "name": "chunk_250",
+  "chunk_size": 250,
+  "chunk_overlap": 50,
+  "k": 20,
+  "store": {
+    "kind": "sqlite_vec"
+  },
+  "provider": {
+    "id": "ollama-embed",
+    "kind": "ollama",
+    "label": "Ollama (эмбеддинги)",
+    "base_url": "http://localhost:11434",
+    "model": "nomic-embed-text",
+    "embedding_model": "nomic-embed-text",
+    "api_key": null,
+    "embed_document_prefix": "",
+    "embed_query_prefix": ""
+  },
+  "_note": "Базовая линия: префиксы выключены ЯВНО. С версии, где nomic-префиксы стали дефолтом, пустая строка — единственный способ померить сторону 'без префиксов'."
+}

@@ -22,3 +22,9 @@ test.txt
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# Eval-индексы: пересоздаются из корпуса командой
+# `python evals/index_corpus.py --config <config>` (31 МБ бинарных SQLite).
+# Результаты прогонов в evals/results/ при этом версионируются — они и есть
+# доказательство измерений.
+evals/index/

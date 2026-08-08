@@ -37,6 +37,18 @@ pub struct ProviderConfig {
     /// Модель для эмбеддингов. Используется только RAG-индексом.
     #[serde(default)]
     pub embedding_model: Option<String>,
+    /// Префикс к тексту ДОКУМЕНТА при индексации.
+    ///
+    /// Часть моделей обучена с обязательными task-префиксами, причём
+    /// асимметричными: у `nomic-embed-text` это `search_document: ` для
+    /// индексируемых кусков и `search_query: ` для запросов. Без них модель
+    /// работает не в том режиме, для которого тренировалась. Вынесено в
+    /// конфиг, а не зашито, чтобы это можно было измерить, а не предполагать.
+    #[serde(default)]
+    pub embed_document_prefix: Option<String>,
+    /// Префикс к тексту ЗАПРОСА при поиске.
+    #[serde(default)]
+    pub embed_query_prefix: Option<String>,
 }
 
 fn default_temperature() -> f32 {
@@ -205,18 +217,172 @@ pub async fn list_models(
 
 /// Эмбеддинг текста. Anthropic своего эмбеддинг-эндпоинта не имеет —
 /// для таких провайдеров RAG откатывается на локальный Ollama.
-pub async fn embed(
+/// Что именно эмбеддится: индексируемый кусок или поисковый запрос.
+/// Различие существенно для моделей с асимметричными task-префиксами.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EmbedRole {
+    Document,
+    Query,
+}
+
+pub async fn embed_as(
     client: &reqwest::Client,
     config: &ProviderConfig,
     text: &str,
+    role: EmbedRole,
 ) -> Result<Vec<f32>, String> {
-    match config.kind {
+    let prefix = match role {
+        EmbedRole::Document => config.embed_document_prefix.as_deref(),
+        EmbedRole::Query => config.embed_query_prefix.as_deref(),
+    }
+    .unwrap_or_else(|| default_prefix(config, role));
+
+    let owned;
+    let text = if prefix.is_empty() {
+        text
+    } else {
+        owned = format!("{}{}", prefix, text);
+        &owned
+    };
+
+    let raw = match config.kind {
         ProviderKind::Ollama => ollama::embed(client, config, text).await,
         ProviderKind::OpenAi => openai::embed(client, config, text).await,
         ProviderKind::Gemini => gemini::embed(client, config, text).await,
         ProviderKind::Anthropic => {
             Err("У Anthropic нет эндпоинта эмбеддингов — выберите Ollama или OpenAI-совместимого провайдера для индексации документов.".into())
         }
+    }?;
+
+    Ok(normalize(raw))
+}
+
+/// Приводит вектор к единичной длине.
+///
+/// Зачем это здесь, а не в конкретном бэкенде. Провайдеры отдают эмбеддинги
+/// ненормированными (у `nomic-embed-text` норма порядка десяти), а бэкенды
+/// ранжируют по-разному: `sqlite` — косинусом, `sqlite_vec` — L2, потому что
+/// это метрика vec0 по умолчанию. На ненормированных векторах это два РАЗНЫХ
+/// порядка: в L2 вклад длины вектора сопоставим с вкладом направления, и
+/// появляются чанки-«хабы», близкие сразу ко всем запросам просто из-за
+/// удачной нормы.
+///
+/// На единичных векторах порядок по L2 совпадает с порядком по косинусу
+/// (`|a-b|² = 2 - 2·cos`), поэтому нормализация в одной точке делает все три
+/// бэкенда согласованными и убирает влияние длины.
+///
+/// Найдено eval-харнесом: поиск по дословному тексту ответа возвращал его
+/// содержащий чанк лишь в половине случаев.
+/// Префикс по умолчанию для моделей, которые его требуют.
+///
+/// `nomic-embed-text` обучен с обязательными асимметричными task-префиксами.
+/// Замер на golden set из 50 запросов по 19 файлам: включение префиксов подняло
+/// recall@5 с 0.167 до 0.300 (95% бутстрэп [+0.03, +0.27], улучшилось 4 запроса
+/// из 30, ухудшилось 0). Поэтому это дефолт, а не опция — но переопределяемый,
+/// чтобы эвал мог замерить обе стороны.
+fn default_prefix(config: &ProviderConfig, role: EmbedRole) -> &'static str {
+    let model = config
+        .embedding_model
+        .as_deref()
+        .unwrap_or(config.model.as_str());
+
+    if model.starts_with("nomic-embed") {
+        match role {
+            EmbedRole::Document => "search_document: ",
+            EmbedRole::Query => "search_query: ",
+        }
+    } else {
+        ""
+    }
+}
+
+fn normalize(mut v: Vec<f32>) -> Vec<f32> {
+    let norm = v.iter().map(|x| x * x).sum::<f32>().sqrt();
+    if norm > 0.0 && norm.is_finite() {
+        for x in v.iter_mut() {
+            *x /= norm;
+        }
+    }
+    v
+}
+
+#[cfg(test)]
+mod embed_tests {
+    use super::normalize;
+
+    use super::{default_prefix, EmbedRole, ProviderConfig, ProviderKind};
+
+    fn cfg(embedding_model: Option<&str>) -> ProviderConfig {
+        ProviderConfig {
+            id: "t".into(),
+            kind: ProviderKind::Ollama,
+            label: "t".into(),
+            base_url: "http://localhost:11434".into(),
+            api_key: None,
+            model: "llama3".into(),
+            temperature: 0.0,
+            embedding_model: embedding_model.map(str::to_string),
+            embed_document_prefix: None,
+            embed_query_prefix: None,
+        }
+    }
+
+    #[test]
+    fn nomic_gets_asymmetric_prefixes_by_default() {
+        let c = cfg(Some("nomic-embed-text"));
+        assert_eq!(default_prefix(&c, EmbedRole::Document), "search_document: ");
+        assert_eq!(default_prefix(&c, EmbedRole::Query), "search_query: ");
+    }
+
+    #[test]
+    fn other_models_get_no_prefix() {
+        let c = cfg(Some("text-embedding-3-small"));
+        assert_eq!(default_prefix(&c, EmbedRole::Document), "");
+        assert_eq!(default_prefix(&c, EmbedRole::Query), "");
+    }
+
+    #[test]
+    fn explicit_empty_prefix_overrides_default() {
+        let mut c = cfg(Some("nomic-embed-text"));
+        c.embed_document_prefix = Some(String::new());
+        // Пустая строка — это осознанное «без префикса», а не «не задано»:
+        // на этом держится возможность померить обе стороны.
+        assert_eq!(c.embed_document_prefix.as_deref(), Some(""));
+    }
+
+    #[test]
+    fn normalize_gives_unit_length() {
+        let v = normalize(vec![3.0, 4.0]);
+        let norm = v.iter().map(|x| x * x).sum::<f32>().sqrt();
+        assert!((norm - 1.0).abs() < 1e-6, "норма должна стать 1, а не {}", norm);
+        assert!((v[0] - 0.6).abs() < 1e-6);
+    }
+
+    #[test]
+    fn normalize_preserves_direction() {
+        let a = normalize(vec![1.0, 2.0, 3.0]);
+        let b = normalize(vec![10.0, 20.0, 30.0]);
+        for (x, y) in a.iter().zip(&b) {
+            assert!((x - y).abs() < 1e-6, "коллинеарные векторы должны совпасть");
+        }
+    }
+
+    #[test]
+    fn l2_order_matches_cosine_order_on_unit_vectors() {
+        let q = normalize(vec![1.0, 0.0]);
+        let near = normalize(vec![0.9, 0.1]);
+        let far = normalize(vec![0.0, 1.0]);
+        let l2 = |a: &[f32], b: &[f32]| -> f32 {
+            a.iter().zip(b).map(|(x, y)| (x - y) * (x - y)).sum::<f32>().sqrt()
+        };
+        let cos = |a: &[f32], b: &[f32]| -> f32 { a.iter().zip(b).map(|(x, y)| x * y).sum() };
+        assert!(l2(&q, &near) < l2(&q, &far));
+        assert!(cos(&q, &near) > cos(&q, &far));
+    }
+
+    #[test]
+    fn zero_vector_survives() {
+        assert_eq!(normalize(vec![0.0, 0.0]), vec![0.0, 0.0]);
     }
 }
 

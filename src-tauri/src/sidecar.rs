@@ -14,9 +14,10 @@
 //! модели внутри графа эта экономия не окупает усложнения.
 
 use crate::providers::{self, ChatMessage, ProviderConfig, StreamEvent};
-use crate::vector::{self, StoreCtx, VectorStoreConfig};
+use crate::rag;
+use crate::vector::VectorStoreConfig;
 use serde_json::{json, Value};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -28,7 +29,7 @@ use tokio::process::Command;
 const GRAPH_TIMEOUT: Duration = Duration::from_secs(180);
 
 pub struct SidecarCtx<'a> {
-    pub app: &'a tauri::AppHandle,
+    pub data_dir: &'a Path,
     pub client: &'a reqwest::Client,
     /// Чем граф думает: переформулировка запроса и оценка релевантности.
     pub provider: &'a ProviderConfig,
@@ -94,21 +95,24 @@ async fn handle_retrieve(ctx: &SidecarCtx<'_>, payload: &Value) -> Result<Value,
         })
         .unwrap_or_default();
 
-    let embedding = providers::embed(ctx.client, ctx.embed_provider, query).await?;
+    // Через rag::retrieve_hits, а не напрямую в vector: путь поиска должен
+    // быть один — тот же, что мерит eval-харнес. Иначе граф ходил бы мимо
+    // измеряемого кода.
+    let hits = rag::retrieve_hits(
+        ctx.data_dir,
+        ctx.client,
+        ctx.embed_provider,
+        ctx.store,
+        query,
+        &scope,
+        top_k,
+    )
+    .await?;
 
-    let store_ctx = StoreCtx {
-        app: ctx.app,
-        client: ctx.client,
-        config: ctx.store,
-    };
-    let hits = vector::query(&store_ctx, &embedding, &scope, top_k).await?;
-
-    Ok(json!({
-        "hits": hits
-            .into_iter()
-            .map(|h| json!({ "content": h.content, "score": h.score }))
-            .collect::<Vec<_>>()
-    }))
+    // SearchHit сериализуется целиком: у графа появляются chunk_id и спаны,
+    // а прежние поля `content` и `score` остаются на месте — graph.py
+    // продолжает работать без правок.
+    Ok(json!({ "hits": hits }))
 }
 
 /// Одиночный вызов модели для узла графа.

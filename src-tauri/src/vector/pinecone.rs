@@ -110,7 +110,13 @@ pub async fn upsert(ctx: &StoreCtx<'_>, chunks: &[Chunk]) -> Result<(), String> 
                 json!({
                     "id": format!("{}#{}", path_key(&c.path), c.index),
                     "values": c.embedding,
-                    "metadata": { "path": c.path, "text": c.content }
+                    "metadata": {
+                        "path": c.path,
+                        "text": c.content,
+                        "chunk_index": c.index,
+                        "char_start": c.char_start,
+                        "char_end": c.char_end
+                    }
                 })
             })
             .collect();
@@ -260,6 +266,13 @@ pub async fn query(
     Ok(matches
         .iter()
         .map(|m| SearchHit {
+            // ID уже имеет вид `{path_key}#{index}` — ровно та схема, что и
+            // у локальных бэкендов, поэтому берём его как есть.
+            chunk_id: m
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
             content: m
                 .pointer("/metadata/text")
                 .and_then(Value::as_str)
@@ -270,6 +283,15 @@ pub async fn query(
                 .and_then(Value::as_str)
                 .unwrap_or_default()
                 .to_string(),
+            // Числа в metadata Pinecone возвращает как f64, не как integer.
+            char_start: m
+                .pointer("/metadata/char_start")
+                .and_then(Value::as_f64)
+                .unwrap_or(0.0) as usize,
+            char_end: m
+                .pointer("/metadata/char_end")
+                .and_then(Value::as_f64)
+                .unwrap_or(0.0) as usize,
             score: m.get("score").and_then(Value::as_f64).unwrap_or(0.0) as f32,
         })
         .filter(|hit| !hit.content.is_empty())

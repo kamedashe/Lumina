@@ -222,11 +222,28 @@ pub async fn embed(
         })?;
 
     if !response.status().is_success() {
+        // Раньше на ЛЮБОЙ неуспех предлагалось `ollama pull`. Это сбивало с
+        // толку: переполнение контекста (500) выглядело как отсутствующая
+        // модель. Причины разные, и подсказки должны быть разными.
+        let status = response.status();
         let detail = sse::error_from_response(response, "Ollama").await;
-        return Err(format!(
-            "{} Похоже, модель «{}» не установлена — выполните: ollama pull {}",
-            detail, model, model
-        ));
+
+        if detail.contains("context length") || detail.contains("input length") {
+            return Err(format!(
+                "{} Фрагмент не влезает в контекст модели «{}». Размер чанка \
+                 задан в СИМВОЛАХ, а контекст модели — в токенах, и на кириллице \
+                 один символ часто равен токену. Уменьшите размер чанка или \
+                 возьмите модель с большим контекстом.",
+                detail, model
+            ));
+        }
+        if status == reqwest::StatusCode::NOT_FOUND {
+            return Err(format!(
+                "{} Модель «{}» не установлена — выполните: ollama pull {}",
+                detail, model, model
+            ));
+        }
+        return Err(detail);
     }
 
     let body: Value = response.json().await.map_err(|e| e.to_string())?;

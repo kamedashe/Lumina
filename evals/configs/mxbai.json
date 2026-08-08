@@ -1,0 +1,21 @@
+{
+  "name": "mxbai",
+  "chunk_size": 1000,
+  "chunk_overlap": 200,
+  "k": 20,
+  "store": {
+    "kind": "sqlite_vec"
+  },
+  "provider": {
+    "id": "ollama-embed",
+    "kind": "ollama",
+    "label": "Ollama (эмбеддинги)",
+    "base_url": "http://localhost:11434",
+    "model": "mxbai-embed-large",
+    "embedding_model": "mxbai-embed-large",
+    "api_key": null,
+    "embed_document_prefix": "",
+    "embed_query_prefix": ""
+  },
+  "_note": "Английская, но сильнее nomic. Контроль: если она тоже провалит русские запросы, дело в языке, а не в качестве модели."
+}

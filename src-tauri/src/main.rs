@@ -10,6 +10,7 @@ use providers::{ChatMessage, ProviderConfig, StreamEvent};
 use vector::{StoreCtx, VectorStoreConfig};
 use rquickjs::{prelude::*, Context, Runtime};
 use serde_json::Value;
+use std::path::{Path, PathBuf};
 use tauri::ipc::Channel;
 use tauri::Manager;
 use window_vibrancy::apply_acrylic;
@@ -44,6 +45,10 @@ async fn run_agent(
     on_event: Channel<StreamEvent>,
 ) -> Result<(), String> {
     let client = http_client();
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Нет доступа к директории данных: {}", e))?;
     let mut history = messages;
 
     // Если есть вложения — индексируем и подмешиваем контекст в последний вопрос.
@@ -57,7 +62,16 @@ async fn run_agent(
         let embed_config = embedding_config(&config, &embedding_provider);
 
         if let Err(e) =
-            rag::process_documents(&app, &client, &embed_config, &store, &attachments).await
+            rag::process_documents(
+                &data_dir,
+                &client,
+                &embed_config,
+                &store,
+                &attachments,
+                rag::DEFAULT_CHUNK_SIZE,
+                rag::DEFAULT_CHUNK_OVERLAP,
+            )
+            .await
         {
             let _ = on_event.send(StreamEvent::Error { message: e });
             let _ = on_event.send(StreamEvent::Done {
@@ -69,7 +83,7 @@ async fn run_agent(
         if let Some(last) = history.last_mut() {
             let query = last.content.clone();
             if let Ok(context) =
-                rag::search_documents(&app, &client, &embed_config, &store, &query, &attachments)
+                rag::search_documents(&data_dir, &client, &embed_config, &store, &query, &attachments)
                     .await
             {
                 if !context.trim().is_empty() {
@@ -125,7 +139,7 @@ async fn run_agent(
                     let embed_config = embedding_config(&config, &embedding_provider);
 
                     search_documents_tool(
-                        &app,
+                        &data_dir,
                         &client,
                         &config,
                         &embed_config,
@@ -182,7 +196,7 @@ async fn run_agent(
 /// зависимостей, таймаут) откатывает на прямой векторный поиск, а не роняет ход.
 #[allow(clippy::too_many_arguments)]
 async fn search_documents_tool(
-    app: &tauri::AppHandle,
+    data_dir: &Path,
     client: &reqwest::Client,
     provider: &ProviderConfig,
     embed_provider: &ProviderConfig,
@@ -197,7 +211,7 @@ async fn search_documents_tool(
         });
 
         let ctx = sidecar::SidecarCtx {
-            app,
+            data_dir,
             client,
             provider,
             embed_provider,
@@ -228,7 +242,7 @@ async fn search_documents_tool(
         }
     }
 
-    match rag::search_documents(app, client, embed_provider, store, query, &[]).await {
+    match rag::search_documents(data_dir, client, embed_provider, store, query, &[]).await {
         Ok(ctx) if ctx.trim().is_empty() => (
             "Ничего не найдено в проиндексированных документах.".into(),
             false,
@@ -262,6 +276,9 @@ fn embedding_config(
             model: "nomic-embed-text".into(),
             temperature: 0.0,
             embedding_model: Some("nomic-embed-text".into()),
+            // nomic обучен с асимметричными task-префиксами.
+            embed_document_prefix: Some("search_document: ".into()),
+            embed_query_prefix: Some("search_query: ".into()),
         };
     }
 
@@ -286,8 +303,12 @@ async fn test_provider(config: ProviderConfig) -> Result<bool, String> {
 #[tauri::command]
 async fn test_vector_store(app: tauri::AppHandle, store: VectorStoreConfig) -> Result<String, String> {
     let client = http_client();
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Нет доступа к директории данных: {}", e))?;
     let ctx = StoreCtx {
-        app: &app,
+        data_dir: &data_dir,
         client: &client,
         config: &store,
     };
@@ -331,7 +352,205 @@ async fn run_plugin(code: String) -> Result<String, String> {
     })
 }
 
+
+// ─────────────────────────── headless-режим ───────────────────────────
+//
+// Отдельного бинаря нет намеренно: `src/bin/*.rs` не видит модули из
+// `main.rs`, для этого пришлось бы выносить `lib.rs`. Вместо этого — ветка
+// в самом начале `main()`, до `tauri::Builder`. Tauri-рантайм не стартует,
+// окна нет, JSON уходит в stdout.
+//
+// ВАЖНО: в release-сборке на Windows действует
+// `windows_subsystem = "windows"` (первая строка файла) — консоли нет и
+// stdout уходит в никуда даже при перенаправлении. Для эвалов гоняйте
+// debug-сборку: `cargo run -- retrieve ...`.
+
+/// Конфигурация прогона эвала. Едет в публичный репозиторий вместе с
+/// `evals/`, поэтому ключей внутри быть не должно — они берутся из
+/// переменных окружения.
+#[derive(serde::Deserialize)]
+struct EvalConfig {
+    #[serde(default)]
+    name: String,
+    #[serde(default = "default_chunk_size")]
+    chunk_size: usize,
+    #[serde(default = "default_chunk_overlap")]
+    chunk_overlap: usize,
+    #[serde(default = "default_k")]
+    k: usize,
+    #[serde(default)]
+    store: VectorStoreConfig,
+    provider: ProviderConfig,
+}
+
+fn default_chunk_size() -> usize {
+    rag::DEFAULT_CHUNK_SIZE
+}
+fn default_chunk_overlap() -> usize {
+    rag::DEFAULT_CHUNK_OVERLAP
+}
+fn default_k() -> usize {
+    20
+}
+
+/// То же место, что вернул бы `AppHandle::path().app_data_dir()`, но без
+/// запущенного Tauri. Если разойдётся — headless откроет пустую базу и
+/// честно вернёт ноль хитов.
+#[cfg(target_os = "windows")]
+fn default_data_dir() -> PathBuf {
+    PathBuf::from(std::env::var("APPDATA").unwrap_or_default()).join("com.lumina.app")
+}
+
+#[cfg(target_os = "macos")]
+fn default_data_dir() -> PathBuf {
+    PathBuf::from(std::env::var("HOME").unwrap_or_default())
+        .join("Library/Application Support")
+        .join("com.lumina.app")
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn default_data_dir() -> PathBuf {
+    std::env::var("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".local/share")
+        })
+        .join("com.lumina.app")
+}
+
+fn flag(args: &[String], name: &str) -> Option<String> {
+    args.iter()
+        .position(|a| a == name)
+        .and_then(|i| args.get(i + 1))
+        .cloned()
+}
+
+fn resolve_data_dir(args: &[String]) -> PathBuf {
+    flag(args, "--data-dir")
+        .map(PathBuf::from)
+        .unwrap_or_else(default_data_dir)
+}
+
+fn load_eval_config(args: &[String]) -> Result<EvalConfig, String> {
+    let path = flag(args, "--config").ok_or("Не задан --config")?;
+    let raw = std::fs::read_to_string(&path).map_err(|e| format!("{}: {}", path, e))?;
+    let mut cfg: EvalConfig =
+        serde_json::from_str(&raw).map_err(|e| format!("{}: {}", path, e))?;
+
+    // Ключи только из окружения: конфиг лежит в публичном репозитории.
+    if cfg.provider.api_key.as_deref().unwrap_or("").is_empty() {
+        if let Ok(key) = std::env::var("LUMINA_API_KEY") {
+            cfg.provider.api_key = Some(key);
+        }
+    }
+    if cfg.store.api_key.as_deref().unwrap_or("").is_empty() {
+        if let Ok(key) = std::env::var("PINECONE_API_KEY") {
+            cfg.store.api_key = Some(key);
+        }
+    }
+
+    Ok(cfg)
+}
+
+/// `lumina index --config ... --paths a.md b.md`
+///
+/// Нужен для свипа размера чанка: без него пришлось бы переиндексировать
+/// корпус через GUI на каждую конфигурацию.
+async fn run_index(args: &[String]) -> Result<(), String> {
+    let cfg = load_eval_config(args)?;
+    let data_dir = resolve_data_dir(args);
+
+    let paths: Vec<String> = args
+        .iter()
+        .skip_while(|a| a.as_str() != "--paths")
+        .skip(1)
+        .take_while(|a| !a.starts_with("--"))
+        .cloned()
+        .collect();
+    if paths.is_empty() {
+        return Err("Не заданы --paths".into());
+    }
+
+    let client = http_client();
+    let report = rag::process_documents(
+        &data_dir,
+        &client,
+        &cfg.provider,
+        &cfg.store,
+        &paths,
+        cfg.chunk_size,
+        cfg.chunk_overlap,
+    )
+    .await?;
+
+    println!(
+        "{}",
+        serde_json::json!({
+            "config": cfg.name,
+            "data_dir": data_dir.to_string_lossy(),
+            "chunk_size": cfg.chunk_size,
+            "chunk_overlap": cfg.chunk_overlap,
+            "files": paths.len(),
+            "report": report,
+        })
+    );
+    Ok(())
+}
+
+/// `lumina retrieve --config ... --query "..." --k 20`
+async fn run_retrieve(args: &[String]) -> Result<(), String> {
+    let cfg = load_eval_config(args)?;
+    let data_dir = resolve_data_dir(args);
+    let query = flag(args, "--query").ok_or("Не задан --query")?;
+    let k = flag(args, "--k")
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(cfg.k);
+
+    let client = http_client();
+    let hits = rag::retrieve_hits(
+        &data_dir,
+        &client,
+        &cfg.provider,
+        &cfg.store,
+        &query,
+        &[],
+        k,
+    )
+    .await?;
+
+    println!(
+        "{}",
+        serde_json::to_string(&serde_json::json!({
+            "config": cfg.name,
+            "data_dir": data_dir.to_string_lossy(),
+            "query": query,
+            "k": k,
+            "hits": hits,
+        }))
+        .map_err(|e| e.to_string())?
+    );
+    Ok(())
+}
+
 fn main() {
+    // Headless-подкоманды перехватываются до старта Tauri.
+    if let Some(cmd) = std::env::args().nth(1) {
+        if cmd == "retrieve" || cmd == "index" {
+            let args: Vec<String> = std::env::args().collect();
+            let rt = tokio::runtime::Runtime::new().expect("Не удалось создать tokio-runtime");
+            let result = if cmd == "retrieve" {
+                rt.block_on(run_retrieve(&args))
+            } else {
+                rt.block_on(run_index(&args))
+            };
+            if let Err(e) = result {
+                eprintln!("{}", e);
+                std::process::exit(1);
+            }
+            std::process::exit(0);
+        }
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())

@@ -1,0 +1,16 @@
+{
+  "name": "chunk_500",
+  "chunk_size": 500,
+  "chunk_overlap": 100,
+  "k": 20,
+  "store": { "kind": "sqlite_vec" },
+  "provider": {
+    "id": "ollama-embed",
+    "kind": "ollama",
+    "label": "Ollama (эмбеддинги)",
+    "base_url": "http://localhost:11434",
+    "model": "nomic-embed-text",
+    "embedding_model": "nomic-embed-text",
+    "api_key": null
+  }
+}

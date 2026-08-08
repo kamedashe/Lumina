@@ -31,6 +31,11 @@ Available tools:
 ### 📚 RAG with a Pluggable Vector Store
 Indexes PDF, TXT, MD, JSON, and source code as chunked embeddings. Search is scoped to the files you attach, and re-indexing replaces stale chunks instead of duplicating them. Embeddings run through your provider, with an automatic local-Ollama fallback for Anthropic (which has no embeddings endpoint).
 
+> **Retrieval quality is measured, not assumed.** See [`evals/`](evals/) —
+> a golden set of 54 hand-labelled queries, recall@k / nDCG@k / MRR, and the
+> three retriever defects the harness caught. Switching the embedding model
+> raised recall@5 from 0.167 to 0.600 on dev, 0.714 on the held-out split.
+
 Three interchangeable backends, selectable in Settings → Storage:
 
 | Backend | Trade-off |

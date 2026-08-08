@@ -7,11 +7,15 @@
 //! парсится на каждой строке при каждом запросе), а расстояния считает SIMD-код
 //! на C, а не скалярный Rust.
 
-use super::{Chunk, SearchHit, StoreCtx};
+use super::{path_key, Chunk, SearchHit, StoreCtx};
 use rusqlite::{ffi::sqlite3_auto_extension, params, Connection};
 use sqlite_vec::sqlite3_vec_init;
+use std::path::Path;
 use std::sync::Once;
-use tauri::Manager;
+
+/// Версия схемы vec0. При её смене таблица сбрасывается: у старых строк нет
+/// символьных смещений, и восстановить их неоткуда — нужна переиндексация.
+const SCHEMA_VERSION: &str = "2";
 
 /// Расширение регистрируется глобально и ровно один раз за процесс —
 /// после этого его подхватывает каждое новое соединение.
@@ -27,24 +31,49 @@ fn to_blob(embedding: &[f32]) -> Vec<u8> {
     embedding.iter().flat_map(|x| x.to_le_bytes()).collect()
 }
 
-fn open(app: &tauri::AppHandle) -> Result<Connection, String> {
+fn open(data_dir: &Path) -> Result<Connection, String> {
     register_extension();
 
-    let app_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("Нет доступа к директории данных: {}", e))?;
-    if !app_dir.exists() {
-        std::fs::create_dir_all(&app_dir).map_err(|e| e.to_string())?;
+    if !data_dir.exists() {
+        std::fs::create_dir_all(data_dir).map_err(|e| e.to_string())?;
     }
 
-    let conn = Connection::open(app_dir.join("lumina-vec.db")).map_err(|e| e.to_string())?;
+    let conn = Connection::open(data_dir.join("lumina-vec.db")).map_err(|e| e.to_string())?;
     conn.execute(
         "CREATE TABLE IF NOT EXISTS vec_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
         [],
     )
     .map_err(|e| e.to_string())?;
+    migrate_schema(&conn)?;
     Ok(conn)
+}
+
+/// Сбрасывает таблицу, если она построена по старой схеме. Без этого на уже
+/// существующей базе первый же запрос падает с «no such column: char_start».
+fn migrate_schema(conn: &Connection) -> Result<(), String> {
+    let stored: Option<String> = conn
+        .query_row(
+            "SELECT value FROM vec_meta WHERE key = 'schema_version'",
+            [],
+            |row| row.get(0),
+        )
+        .ok();
+
+    if stored.as_deref() == Some(SCHEMA_VERSION) {
+        return Ok(());
+    }
+
+    conn.execute("DROP TABLE IF EXISTS vec_documents", [])
+        .map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM vec_meta WHERE key = 'dimension'", [])
+        .map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT OR REPLACE INTO vec_meta (key, value) VALUES ('schema_version', ?1)",
+        params![SCHEMA_VERSION],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
 }
 
 fn stored_dimension(conn: &Connection) -> Option<usize> {
@@ -86,6 +115,9 @@ fn create_table(conn: &Connection, dimension: usize) -> Result<(), String> {
             "CREATE VIRTUAL TABLE IF NOT EXISTS vec_documents USING vec0(
                 embedding float[{}],
                 path TEXT,
+                +chunk_index INTEGER,
+                +char_start INTEGER,
+                +char_end INTEGER,
                 +content TEXT
             )",
             dimension
@@ -108,18 +140,29 @@ pub fn upsert(ctx: &StoreCtx<'_>, chunks: &[Chunk]) -> Result<(), String> {
         return Ok(());
     }
 
-    let mut conn = open(ctx.app)?;
+    let mut conn = open(ctx.data_dir)?;
     ensure_table(&conn, chunks[0].embedding.len(), true)?;
 
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     {
         let mut stmt = tx
-            .prepare("INSERT INTO vec_documents (embedding, path, content) VALUES (?1, ?2, ?3)")
+            .prepare(
+                "INSERT INTO vec_documents
+                    (embedding, path, chunk_index, char_start, char_end, content)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            )
             .map_err(|e| e.to_string())?;
 
         for chunk in chunks {
-            stmt.execute(params![to_blob(&chunk.embedding), chunk.path, chunk.content])
-                .map_err(|e| format!("Не удалось записать фрагмент: {}", e))?;
+            stmt.execute(params![
+                to_blob(&chunk.embedding),
+                chunk.path,
+                chunk.index as i64,
+                chunk.char_start as i64,
+                chunk.char_end as i64,
+                chunk.content
+            ])
+            .map_err(|e| format!("Не удалось записать фрагмент: {}", e))?;
         }
     }
     tx.commit().map_err(|e| e.to_string())?;
@@ -128,7 +171,7 @@ pub fn upsert(ctx: &StoreCtx<'_>, chunks: &[Chunk]) -> Result<(), String> {
 }
 
 pub fn delete_by_path(ctx: &StoreCtx<'_>, path: &str) -> Result<(), String> {
-    let conn = open(ctx.app)?;
+    let conn = open(ctx.data_dir)?;
     if stored_dimension(&conn).is_none() {
         return Ok(()); // таблицы ещё нет — удалять нечего
     }
@@ -159,7 +202,7 @@ pub fn query(
     scope: &[String],
     top_k: usize,
 ) -> Result<Vec<SearchHit>, String> {
-    let conn = open(ctx.app)?;
+    let conn = open(ctx.data_dir)?;
     if stored_dimension(&conn).is_none() {
         return Ok(Vec::new()); // ничего не индексировали
     }
@@ -171,7 +214,8 @@ pub fn query(
     if scope.is_empty() {
         let mut stmt = conn
             .prepare(
-                "SELECT content, path, distance FROM vec_documents
+                "SELECT content, path, chunk_index, char_start, char_end, distance
+                 FROM vec_documents
                  WHERE embedding MATCH ?1 AND k = ?2
                  ORDER BY distance",
             )
@@ -186,7 +230,8 @@ pub fn query(
         // сливаются и пересортировываются. Вложений обычно единицы, это дёшево.
         let mut stmt = conn
             .prepare(
-                "SELECT content, path, distance FROM vec_documents
+                "SELECT content, path, chunk_index, char_start, char_end, distance
+                 FROM vec_documents
                  WHERE embedding MATCH ?1 AND k = ?2 AND path = ?3
                  ORDER BY distance",
             )
@@ -212,10 +257,18 @@ pub fn query(
 }
 
 fn map_hit(row: &rusqlite::Row<'_>) -> rusqlite::Result<SearchHit> {
+    let content: String = row.get(0)?;
+    let path: String = row.get(1)?;
+    let index: i64 = row.get(2)?;
+    let char_start: i64 = row.get(3)?;
+    let char_end: i64 = row.get(4)?;
     Ok(SearchHit {
-        content: row.get(0)?,
-        path: row.get(1)?,
-        score: row.get::<_, f64>(2)? as f32,
+        chunk_id: format!("{}#{}", path_key(&path), index),
+        path,
+        char_start: char_start as usize,
+        char_end: char_end as usize,
+        score: row.get::<_, f64>(5)? as f32,
+        content,
     })
 }
 
@@ -233,6 +286,9 @@ mod tests {
             "CREATE VIRTUAL TABLE vec_documents USING vec0(
                 embedding float[4],
                 path TEXT,
+                +chunk_index INTEGER,
+                +char_start INTEGER,
+                +char_end INTEGER,
                 +content TEXT
             )",
             [],
@@ -242,9 +298,12 @@ mod tests {
     }
 
     fn insert(conn: &Connection, embedding: [f32; 4], path: &str, content: &str) {
+        let len = content.chars().count() as i64;
         conn.execute(
-            "INSERT INTO vec_documents (embedding, path, content) VALUES (?1, ?2, ?3)",
-            params![to_blob(&embedding), path, content],
+            "INSERT INTO vec_documents
+                (embedding, path, chunk_index, char_start, char_end, content)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![to_blob(&embedding), path, 0i64, 0i64, len, content],
         )
         .unwrap();
     }
@@ -267,7 +326,8 @@ mod tests {
 
         let mut stmt = conn
             .prepare(
-                "SELECT content, path, distance FROM vec_documents
+                "SELECT content, path, chunk_index, char_start, char_end, distance
+                 FROM vec_documents
                  WHERE embedding MATCH ?1 AND k = ?2
                  ORDER BY distance",
             )
@@ -291,7 +351,8 @@ mod tests {
 
         let mut stmt = conn
             .prepare(
-                "SELECT content, path, distance FROM vec_documents
+                "SELECT content, path, chunk_index, char_start, char_end, distance
+                 FROM vec_documents
                  WHERE embedding MATCH ?1 AND k = ?2 AND path = ?3
                  ORDER BY distance",
             )
@@ -336,7 +397,7 @@ mod tests {
 }
 
 pub fn health(ctx: &StoreCtx<'_>) -> Result<String, String> {
-    let conn = open(ctx.app)?;
+    let conn = open(ctx.data_dir)?;
 
     let version: String = conn
         .query_row("SELECT vec_version()", [], |row| row.get(0))

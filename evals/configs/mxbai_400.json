@@ -1,0 +1,21 @@
+{
+  "name": "mxbai_400",
+  "chunk_size": 400,
+  "chunk_overlap": 80,
+  "k": 20,
+  "store": {
+    "kind": "sqlite_vec"
+  },
+  "provider": {
+    "id": "ollama-embed",
+    "kind": "ollama",
+    "label": "Ollama (эмбеддинги)",
+    "base_url": "http://localhost:11434",
+    "model": "mxbai-embed-large",
+    "embedding_model": "mxbai-embed-large",
+    "api_key": null,
+    "embed_document_prefix": "",
+    "embed_query_prefix": ""
+  },
+  "_note": "Контрольная пара: одинаковый чанк 400/80, разные модели. 400 символов выбрано так, чтобы кириллический фрагмент влезал в контекст mxbai (512 токенов). Сравнивать можно только внутри пары."
+}

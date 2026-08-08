@@ -1,0 +1,21 @@
+{
+  "name": "bge_m3",
+  "chunk_size": 1000,
+  "chunk_overlap": 200,
+  "k": 20,
+  "store": {
+    "kind": "sqlite_vec"
+  },
+  "provider": {
+    "id": "ollama-embed",
+    "kind": "ollama",
+    "label": "Ollama (эмбеддинги)",
+    "base_url": "http://localhost:11434",
+    "model": "bge-m3",
+    "embedding_model": "bge-m3",
+    "api_key": null,
+    "embed_document_prefix": "",
+    "embed_query_prefix": ""
+  },
+  "_note": "Мультиязычная модель (1024 измерения), префиксы не нужны. Гипотеза: провалы — на русских запросах к английскому корпусу."
+}

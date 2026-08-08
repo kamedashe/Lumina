@@ -4,24 +4,34 @@
 //! не отправляет наружу. Стоимость поиска линейна по числу фрагментов —
 //! для личной базы документов этого достаточно, для сотен тысяч — берите Pinecone.
 
-use super::{Chunk, SearchHit, StoreCtx};
+use super::{path_key, Chunk, SearchHit, StoreCtx};
 use rusqlite::{params, Connection, Result as SqlResult};
-use tauri::Manager;
+use std::path::Path;
 
-pub fn init_db(app: &tauri::AppHandle) -> SqlResult<Connection> {
-    let app_dir = app
-        .path()
-        .app_data_dir()
-        .expect("Не удалось получить директорию данных приложения");
-    if !app_dir.exists() {
-        std::fs::create_dir_all(&app_dir).expect("Не удалось создать директорию данных");
+/// Версия схемы. При её смене таблица пересоздаётся: у старых строк нет
+/// символьных смещений, и восстановить их неоткуда — нужна переиндексация.
+const SCHEMA_VERSION: i64 = 2;
+
+pub fn init_db(data_dir: &Path) -> SqlResult<Connection> {
+    if !data_dir.exists() {
+        std::fs::create_dir_all(data_dir).expect("Не удалось создать директорию данных");
     }
 
-    let conn = Connection::open(app_dir.join("lumina.db"))?;
+    let conn = Connection::open(data_dir.join("lumina.db"))?;
+
+    let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    if version != SCHEMA_VERSION {
+        conn.execute("DROP TABLE IF EXISTS documents", [])?;
+        conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+    }
+
     conn.execute(
         "CREATE TABLE IF NOT EXISTS documents (
             id INTEGER PRIMARY KEY,
             path TEXT NOT NULL,
+            chunk_index INTEGER NOT NULL,
+            char_start INTEGER NOT NULL,
+            char_end INTEGER NOT NULL,
             content TEXT NOT NULL,
             embedding BLOB
         )",
@@ -35,13 +45,22 @@ pub fn init_db(app: &tauri::AppHandle) -> SqlResult<Connection> {
 }
 
 pub fn upsert(ctx: &StoreCtx<'_>, chunks: &[Chunk]) -> Result<(), String> {
-    let conn = init_db(ctx.app).map_err(|e| e.to_string())?;
+    let conn = init_db(ctx.data_dir).map_err(|e| e.to_string())?;
 
     for chunk in chunks {
         let embedding_json = serde_json::to_string(&chunk.embedding).unwrap_or_else(|_| "[]".into());
         conn.execute(
-            "INSERT INTO documents (path, content, embedding) VALUES (?1, ?2, ?3)",
-            params![chunk.path, chunk.content, embedding_json],
+            "INSERT INTO documents
+                (path, chunk_index, char_start, char_end, content, embedding)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                chunk.path,
+                chunk.index as i64,
+                chunk.char_start as i64,
+                chunk.char_end as i64,
+                chunk.content,
+                embedding_json
+            ],
         )
         .map_err(|e| e.to_string())?;
     }
@@ -50,7 +69,7 @@ pub fn upsert(ctx: &StoreCtx<'_>, chunks: &[Chunk]) -> Result<(), String> {
 }
 
 pub fn delete_by_path(ctx: &StoreCtx<'_>, path: &str) -> Result<(), String> {
-    let conn = init_db(ctx.app).map_err(|e| e.to_string())?;
+    let conn = init_db(ctx.data_dir).map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM documents WHERE path = ?1", params![path])
         .map_err(|e| e.to_string())?;
     Ok(())
@@ -76,11 +95,13 @@ pub fn query(
     scope: &[String],
     top_k: usize,
 ) -> Result<Vec<SearchHit>, String> {
-    let conn = init_db(ctx.app).map_err(|e| e.to_string())?;
+    let conn = init_db(ctx.data_dir).map_err(|e| e.to_string())?;
     let scope_set: std::collections::HashSet<&str> = scope.iter().map(String::as_str).collect();
 
     let mut stmt = conn
-        .prepare("SELECT content, embedding, path FROM documents")
+        .prepare(
+            "SELECT content, embedding, path, chunk_index, char_start, char_end FROM documents",
+        )
         .map_err(|e| e.to_string())?;
 
     let rows = stmt
@@ -88,14 +109,17 @@ pub fn query(
             let content: String = row.get(0)?;
             let embedding_json: String = row.get(1)?;
             let path: String = row.get(2)?;
+            let index: i64 = row.get(3)?;
+            let char_start: i64 = row.get(4)?;
+            let char_end: i64 = row.get(5)?;
             let vector: Vec<f32> = serde_json::from_str(&embedding_json).unwrap_or_default();
-            Ok((content, vector, path))
+            Ok((content, vector, path, index, char_start, char_end))
         })
         .map_err(|e| e.to_string())?;
 
     let mut results: Vec<SearchHit> = Vec::new();
     for row in rows.flatten() {
-        let (content, vector, path) = row;
+        let (content, vector, path, index, char_start, char_end) = row;
         if !scope_set.is_empty() && !scope_set.contains(path.as_str()) {
             continue;
         }
@@ -103,7 +127,10 @@ pub fn query(
             continue;
         }
         results.push(SearchHit {
+            chunk_id: format!("{}#{}", path_key(&path), index),
             score: cosine_similarity(embedding, &vector),
+            char_start: char_start as usize,
+            char_end: char_end as usize,
             content,
             path,
         });
@@ -115,9 +142,10 @@ pub fn query(
 }
 
 pub fn health(ctx: &StoreCtx<'_>) -> Result<String, String> {
-    let conn = init_db(ctx.app).map_err(|e| e.to_string())?;
+    let conn = init_db(ctx.data_dir).map_err(|e| e.to_string())?;
     let count: i64 = conn
         .query_row("SELECT COUNT(*) FROM documents", [], |row| row.get(0))
         .map_err(|e| e.to_string())?;
     Ok(format!("Локальный SQLite · фрагментов в индексе: {}", count))
 }
+
